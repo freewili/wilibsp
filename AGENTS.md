@@ -1,5 +1,15 @@
 # AGENTS.md — guide for AI agents and contributors
 
+> **Consuming wilibsp from another project?** Read
+> **[docs/consuming.md](docs/consuming.md)** instead — it is short, and it is
+> the whole of what a parent project needs. This file is the deep reference for
+> working **on** wilibsp, and about 60 % of it is internal to that job.
+>
+> Do not copy rules out of either file into your own project's docs. Anything
+> copied is pinned to the submodule commit you copied it at and rots silently
+> when you bump it; the enforceable rules already ship as build checks and CLI
+> behaviour that version with the code.
+
 This file orients coding agents (Claude Code, Cursor, Copilot, etc.) and new
 human contributors working in `wilibsp`. It is intentionally dense: the goal
 is that you do **not** have to rediscover the hard-won facts this project was

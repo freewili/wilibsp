@@ -7,7 +7,7 @@ Commands:
   fw flash [app]     program the app over the cmsis-dap debug probe via OpenOCD
   fw rtt             stream SEGGER RTT diagnostics
   fw test            build+run host unit tests (CTest, no hardware)
-  fw new-app <name>  scaffold apps/<name> from apps/template
+  fw new-app <name>  scaffold apps/<name> (--window FLASH|SRAM|PSRAM)
   fw install-app UF2 copy an app to the device SD card's /apps directory
   fw run-app <name>  launch /apps/<name> on the display CPU and report the result
   fw list-apps       list the SD card's /apps directory
@@ -611,14 +611,30 @@ def test_command():
         ["ctest", "--test-dir", str(build_dir), "--output-on-failure"],
     ]
 
-def new_app(name, repo_root=REPO_ROOT):
+APP_WINDOWS = ("FLASH", "SRAM", "PSRAM")
+
+def new_app(name, window="FLASH", repo_root=REPO_ROOT):
+    """Scaffold apps/<name> from apps/template, targeting `window`.
+
+    The window is a single token in the generated CMakeLists because everything
+    that follows from it -- binary type, linker overrides, runtime-init
+    overrides, UF2 emission, and the build-time check that the artifact matches
+    -- lives in fw2_finalize_app(). Choosing SRAM or PSRAM here is the whole of
+    what an app has to do to be loadable from the SD card without touching the
+    stock display firmware."""
+    window = window.upper()
+    if window not in APP_WINDOWS:
+        raise ValueError(f"window must be one of {', '.join(APP_WINDOWS)}")
     src = pathlib.Path(repo_root) / "apps" / "template"
     dest = pathlib.Path(repo_root) / "apps" / name
     if dest.exists():
         raise FileExistsError(dest)
     shutil.copytree(src, dest)
     cml = dest / "CMakeLists.txt"
-    cml.write_text(cml.read_text().replace("template", name))
+    text = cml.read_text().replace("template", name)
+    text = text.replace(f"fw2_finalize_app({name} FLASH)",
+                        f"fw2_finalize_app({name} {window})")
+    cml.write_text(text)
     return dest
 
 def _run(cmds, do_print):
@@ -793,6 +809,11 @@ def main(argv=None):
                     help="capture for N seconds then exit (0 = until Ctrl+C)")
     sp = sub.add_parser("test"); sp.add_argument("--print", dest="show", action="store_true")
     sp = sub.add_parser("new-app"); sp.add_argument("name")
+    sp.add_argument("--window", default="FLASH", choices=["FLASH", "SRAM", "PSRAM",
+                                                          "flash", "sram", "psram"],
+                    help="where the app runs: FLASH replaces the stock display "
+                         "firmware and is programmed over SWD; SRAM and PSRAM are "
+                         "loadable from the SD card (default: FLASH)")
     sp = sub.add_parser("install-app")
     sp.add_argument("uf2", help="app UF2 to copy into /apps on the device SD card")
     sp.add_argument("--device", help="fwFinder device serial (required when multiple devices are connected)")
@@ -850,7 +871,7 @@ def main(argv=None):
             return run_rtt(a.seconds)
     elif a.cmd == "test":  _run(test_command(), a.show)
     elif a.cmd == "new-app":
-        print("created", new_app(a.name))
+        print("created", new_app(a.name, a.window))
     elif a.cmd == "install-app":
         install_app(a.uf2, a.device, a.timeout, a.port)
     elif a.cmd == "run-app":
@@ -873,7 +894,23 @@ def main(argv=None):
                   f"{crop[0] if crop else 0} {crop[1] if crop else 0} "
                   f"{crop[2] if crop else 0} {crop[3] if crop else 0} {a.scale}")
             return 0
-        w, h = agentio_capture(a.surface, crop, a.scale, a.out)
+        try:
+            w, h = agentio_capture(a.surface, crop, a.scale, a.out)
+        except RuntimeError as e:
+            if "measuring" in str(e):
+                print("screenshot refused: the app is inside a timed region.\n"
+                      "  A capture streams 307,200 bytes from the app's own main "
+                      "loop, which would\n  land between its measurements and skew "
+                      "the result -- so it is refused rather\n  than silently "
+                      "corrupting it (agentio_measure_begin).\n"
+                      "  Wait for the run to finish, or capture before starting it.",
+                      file=sys.stderr)
+                return 1
+            if "busy" in str(e):
+                print("screenshot refused: an injected press or TYPE is still "
+                      "pending. Retry shortly.", file=sys.stderr)
+                return 1
+            raise
         print(f"wrote {a.out} ({w}x{h})")
     elif a.cmd in ("press", "hold", "release"):
         try:

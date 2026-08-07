@@ -85,6 +85,14 @@ static bool     s_tap_active;
 static uint32_t s_tap_deadline;
 static uint32_t s_tap_reads0;
 
+/* Set while the app is inside a region whose timing is the result; see
+ * agentio_measure_begin() in agentio.h. Only captures are gated on it --
+ * injection is cheap and is often what starts the measured work. */
+static volatile bool s_measuring;
+
+void agentio_measure_begin(void) { s_measuring = true; }
+void agentio_measure_end(void)   { s_measuring = false; }
+
 /* One output row at a time, sized to the widest surface we can be asked for.
  * Derive it rather than hard-coding 480: HSTX_VID_W_MAX is overridable by a
  * target compile definition (see bsp/display/hstx_dvi.h), so an app that raises
@@ -369,6 +377,15 @@ static void dispatch(char *line)
          * so the host knows to retry rather than silently racing it. */
         if (s_q_count > 0 || s_type[s_type_pos] != 0) {
             reply("ERR busy\n");
+            return;
+        }
+        /* A capture streams the whole shadow from this main loop. Inside a
+         * timed region that cost lands between the app's measurements instead
+         * of inside them, so its own timing looks fine while wall-clock
+         * throughput collapses -- see agentio_measure_begin() in agentio.h.
+         * Refuse rather than silently corrupt the result. */
+        if (s_measuring) {
+            reply("ERR measuring\n");
             return;
         }
         do_capture((int)strtol(argv[1], 0, 10), (int)strtol(argv[2], 0, 10),
