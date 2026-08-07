@@ -1,4 +1,11 @@
 # freewili2_bsp — shared board-support library (STATIC once it has sources).
+
+# App target configuration + enforcement. Included first so the board guard runs
+# before anything is built, and so consumers get fw2_finalize_app() simply by
+# doing add_subdirectory(wilibsp/bsp) -- no extra wiring, and it versions with
+# the submodule instead of being copied into each project's docs.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/fw2_app.cmake)
+
 add_library(freewili2_bsp STATIC
     agentio/agentio.c
     agentio/agentio_rle.c

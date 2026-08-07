@@ -7,8 +7,13 @@ Commands:
   fw flash [app]     program the app over the cmsis-dap debug probe via OpenOCD
   fw rtt             stream SEGGER RTT diagnostics
   fw test            build+run host unit tests (CTest, no hardware)
-  fw new-app <name>  scaffold apps/<name> from apps/template
+  fw new-app <name>  scaffold apps/<name> (--window FLASH|SRAM|PSRAM)
   fw install-app UF2 copy an app to the device SD card's /apps directory
+  fw run-app <name>  launch /apps/<name> on the display CPU and report the result
+  fw list-apps       list the SD card's /apps directory
+  fw peek <addr>     read memory from the running target (never halts)
+  fw alive           is the display CPU executing? (checks TIMER0 advances)
+  fw thaw            release a debug-halted core that has TIMER0 paused
 Add --print to any build/flash/test command to print the command(s) instead of running.
 """
 import argparse, os, pathlib, shutil, socket, stat, struct, subprocess, sys, time, zlib
@@ -408,6 +413,159 @@ def flash_command(app):
     elf = f"build/apps/{app}/{app}.elf"
     return _openocd_base() + ["-c", f"program {elf} verify reset exit"]
 
+def run_app(name, reset=True, timeout=90.0):
+    r"""Launch /apps/<name> on the display CPU and report the real outcome.
+
+    Two things make the naive `a\r <file>` unreliable, and both are handled here
+    so no caller has to know them:
+
+    1. **The display must be reset first.** Once it is running an app -- or a
+       crashed one -- the fused bootloader does not answer hop 1, and the launch
+       fails with "display bootloader did not answer". `h\v\x` first.
+
+    2. **`a\r` returns a dispatch ack immediately; the real result arrives later
+       in a deferred [d ...] frame.** A two-hop PSRAM stage streams the whole
+       image over the 8 Mbaud link, so a short read window misses it and a
+       *successful* launch looks like it silently did nothing.
+
+    The destination is inferred from the image, not the filename: an SRAM UF2 is
+    staged into RAM, a PSRAM-window one through FW2PsramStub, and anything else
+    is written to FLASH -- which replaces the stock display firmware. Build apps
+    with fw2_finalize_app(SRAM|PSRAM) and that last case cannot arise.
+    """
+    from fw_console import Console
+
+    with Console() as con:
+        if reset:
+            print("resetting display...")
+            _, frames = con.call(r"h\v\x", wait=10.0, idle=3.0)
+            for path, _ts, seq, resp in frames:
+                print(f"  [{path}] seq={seq} {resp.strip()}")
+            time.sleep(5)     # let the fused bootloader come up and listen
+
+        print(f"launching {name}...")
+        _, frames = con.call(rf"a\r {name}", wait=timeout, idle=25.0)
+
+    if not frames:
+        print("no response frame — the launch may still be streaming, or the "
+              "console was lost", file=sys.stderr)
+        return 1
+
+    rc = 0
+    for path, _ts, seq, resp in frames:
+        resp = resp.strip()
+        print(f"  [{path}] seq={seq} {resp}")
+        # The deferred frame carries the verdict. "Ok" means the stub answered,
+        # the image streamed and CRC-verified, and it jumped.
+        if path == "d" and not resp.lower().startswith("ok"):
+            rc = 1
+    if rc:
+        print("\nlaunch FAILED. If the image is on the card and well-formed, the "
+              "usual causes are:\n"
+              "  - the display was already running an app (reset first)\n"
+              "  - the file is not in /apps/ (check with `fw list-apps`)\n"
+              "  - the UF2 targets a window the loader will not stage",
+              file=sys.stderr)
+    return rc
+
+
+def list_apps():
+    r"""Print the card's /apps directory (h\v\l), so a failed launch can be told
+    apart from a missing file."""
+    from fw_console import Console
+    with Console() as con:
+        _, frames = con.call(r"h\v\l", wait=20.0, idle=4.0)
+    if not frames:
+        print("no response frame", file=sys.stderr)
+        return 1
+    for path, _ts, seq, resp in frames:
+        print(f"[{path}] seq={seq} {resp.strip()}")
+    return 0
+
+
+TIMER0_TIMERAWL = 0x400B0028   # free-running microsecond counter, read-to-peek
+
+def peek_command(addr, count):
+    """Read memory from a RUNNING target. `init` + `read_memory`, never `halt`.
+
+    A halt is not a neutral observation on this chip: TIMER0's DBGPAUSE pauses
+    the timer while a core is debug-halted, so halting to look at something
+    stops the app's timebase underneath it. The config defers cm1's examine so
+    that can no longer become permanent, but there is still no reason to halt
+    just to read a word."""
+    return _openocd_base() + [
+        "-c", "init", "-c", f"read_memory 0x{addr:08x} 32 {count}", "-c", "shutdown"]
+
+def _openocd_words(cmd):
+    """Run an OpenOCD command list and collect the hex words it printed.
+
+    OpenOCD logs to stderr -- including `read_memory` results -- so both streams
+    have to be scanned. Info/Error lines are skipped so their addresses and
+    hex ids are not mistaken for data."""
+    out = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    words = []
+    for stream in (out.stdout, out.stderr):
+        for line in stream.splitlines():
+            if line.startswith(("Info :", "Warn :", "Error:", "Debug:")):
+                continue
+            for w in line.split():
+                try:
+                    words.append(int(w, 16) if w.startswith("0x") else None)
+                except ValueError:
+                    words.append(None)
+    return [w for w in words if w is not None], out
+
+def run_peek(addr, count):
+    words, out = _openocd_words(peek_command(addr, count))
+    if not words:
+        sys.stderr.write(out.stderr)
+        print("peek: no data — is the probe connected?", file=sys.stderr)
+        return 1
+    for i, w in enumerate(words[:count]):
+        print(f"0x{addr + 4 * i:08x}: 0x{w:08x}")
+    return 0
+
+def run_alive():
+    """Is the display CPU executing? Reads TIMER0 twice and looks for movement.
+
+    This is the liveness test that does not perturb what it measures -- no halt,
+    no reset. A frozen counter means the timebase is stopped, which presents as
+    a hung UI (the LVGL tick stops, so redraws and input polling stop) even
+    though the main loop may still be servicing things that need no timer."""
+    wa, _ = _openocd_words(peek_command(TIMER0_TIMERAWL, 1))
+    time.sleep(0.2)
+    wb, _ = _openocd_words(peek_command(TIMER0_TIMERAWL, 1))
+
+    t0 = wa[0] if wa else None
+    t1 = wb[0] if wb else None
+    if t0 is None or t1 is None:
+        print("alive: could not read TIMER0 — is the probe connected?", file=sys.stderr)
+        return 1
+    if t1 != t0:
+        print(f"alive: RUNNING (TIMER0 {t0:#010x} -> {t1:#010x})")
+        return 0
+    print(f"alive: TIMER0 IS FROZEN at {t0:#010x}\n"
+          "  The timebase is stopped, so the LVGL tick and every LVGL timer are\n"
+          "  stopped too: no redraws, no input polling. Anything driven straight\n"
+          "  off the main loop still responds, so this looks like a hung UI.\n"
+          "  Usual cause is a debug-halted core (TIMER0 DBGPAUSE). Try `fw thaw`.",
+          file=sys.stderr)
+    return 1
+
+def run_thaw():
+    """Release a core left debug-halted, which un-pauses TIMER0.
+
+    Should be unnecessary now that the OpenOCD config defers cm1's examine, but
+    a board frozen by an older config (or a hand-rolled `halt`) still needs
+    rescuing, and that does not require relaunching the app."""
+    cmd = _openocd_base() + ["-c", "init",
+                             "-c", "targets rp2350.cm1", "-c", "poll",
+                             "-c", "catch {resume}",
+                             "-c", "targets rp2350.cm0", "-c", "catch {resume}",
+                             "-c", "shutdown"]
+    subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    return run_alive()
+
 def rtt_command():
     """OpenOCD serving BOTH RTT channels: 0 (DIAG) and 1 (agentio). Only one
     process can own the debug probe, so a running `fw rtt` doubles as the
@@ -453,14 +611,30 @@ def test_command():
         ["ctest", "--test-dir", str(build_dir), "--output-on-failure"],
     ]
 
-def new_app(name, repo_root=REPO_ROOT):
+APP_WINDOWS = ("FLASH", "SRAM", "PSRAM")
+
+def new_app(name, window="FLASH", repo_root=REPO_ROOT):
+    """Scaffold apps/<name> from apps/template, targeting `window`.
+
+    The window is a single token in the generated CMakeLists because everything
+    that follows from it -- binary type, linker overrides, runtime-init
+    overrides, UF2 emission, and the build-time check that the artifact matches
+    -- lives in fw2_finalize_app(). Choosing SRAM or PSRAM here is the whole of
+    what an app has to do to be loadable from the SD card without touching the
+    stock display firmware."""
+    window = window.upper()
+    if window not in APP_WINDOWS:
+        raise ValueError(f"window must be one of {', '.join(APP_WINDOWS)}")
     src = pathlib.Path(repo_root) / "apps" / "template"
     dest = pathlib.Path(repo_root) / "apps" / name
     if dest.exists():
         raise FileExistsError(dest)
     shutil.copytree(src, dest)
     cml = dest / "CMakeLists.txt"
-    cml.write_text(cml.read_text().replace("template", name))
+    text = cml.read_text().replace("template", name)
+    text = text.replace(f"fw2_finalize_app({name} FLASH)",
+                        f"fw2_finalize_app({name} {window})")
+    cml.write_text(text)
     return dest
 
 def _run(cmds, do_print):
@@ -635,12 +809,31 @@ def main(argv=None):
                     help="capture for N seconds then exit (0 = until Ctrl+C)")
     sp = sub.add_parser("test"); sp.add_argument("--print", dest="show", action="store_true")
     sp = sub.add_parser("new-app"); sp.add_argument("name")
+    sp.add_argument("--window", default="FLASH", choices=["FLASH", "SRAM", "PSRAM",
+                                                          "flash", "sram", "psram"],
+                    help="where the app runs: FLASH replaces the stock display "
+                         "firmware and is programmed over SWD; SRAM and PSRAM are "
+                         "loadable from the SD card (default: FLASH)")
     sp = sub.add_parser("install-app")
     sp.add_argument("uf2", help="app UF2 to copy into /apps on the device SD card")
     sp.add_argument("--device", help="fwFinder device serial (required when multiple devices are connected)")
     sp.add_argument("--port", help="explicit MAIN serial port if fwFinder cannot identify legacy hardware")
     sp.add_argument("--timeout", type=float, default=25,
                     help="seconds to wait for the USB SD reader (default: 25)")
+
+    sp = sub.add_parser("run-app")
+    sp.add_argument("name", help="filename in /apps on the SD card, e.g. myapp.uf2")
+    sp.add_argument("--no-reset", action="store_true",
+                    help="skip the display reset (the launch will usually fail)")
+    sp.add_argument("--timeout", type=float, default=90,
+                    help="seconds to wait for the deferred result frame (default: 90)")
+    sub.add_parser("list-apps")
+
+    sp = sub.add_parser("peek")
+    sp.add_argument("addr", help="address, e.g. 0x20012f44")
+    sp.add_argument("--count", type=int, default=1, help="words to read (default: 1)")
+    sub.add_parser("alive")
+    sub.add_parser("thaw")
 
     sp = sub.add_parser("screenshot")
     sp.add_argument("-o", "--out", default="screenshot.png")
@@ -678,9 +871,19 @@ def main(argv=None):
             return run_rtt(a.seconds)
     elif a.cmd == "test":  _run(test_command(), a.show)
     elif a.cmd == "new-app":
-        print("created", new_app(a.name))
+        print("created", new_app(a.name, a.window))
     elif a.cmd == "install-app":
         install_app(a.uf2, a.device, a.timeout, a.port)
+    elif a.cmd == "run-app":
+        return run_app(a.name, reset=not a.no_reset, timeout=a.timeout)
+    elif a.cmd == "list-apps":
+        return list_apps()
+    elif a.cmd == "peek":
+        return run_peek(int(a.addr, 0), a.count)
+    elif a.cmd == "alive":
+        return run_alive()
+    elif a.cmd == "thaw":
+        return run_thaw()
     elif a.cmd == "screenshot":
         crop = tuple(int(v) for v in a.crop.split(",")) if a.crop else None
         if crop is not None and len(crop) != 4:
@@ -691,7 +894,23 @@ def main(argv=None):
                   f"{crop[0] if crop else 0} {crop[1] if crop else 0} "
                   f"{crop[2] if crop else 0} {crop[3] if crop else 0} {a.scale}")
             return 0
-        w, h = agentio_capture(a.surface, crop, a.scale, a.out)
+        try:
+            w, h = agentio_capture(a.surface, crop, a.scale, a.out)
+        except RuntimeError as e:
+            if "measuring" in str(e):
+                print("screenshot refused: the app is inside a timed region.\n"
+                      "  A capture streams 307,200 bytes from the app's own main "
+                      "loop, which would\n  land between its measurements and skew "
+                      "the result -- so it is refused rather\n  than silently "
+                      "corrupting it (agentio_measure_begin).\n"
+                      "  Wait for the run to finish, or capture before starting it.",
+                      file=sys.stderr)
+                return 1
+            if "busy" in str(e):
+                print("screenshot refused: an injected press or TYPE is still "
+                      "pending. Retry shortly.", file=sys.stderr)
+                return 1
+            raise
         print(f"wrote {a.out} ({w}x{h})")
     elif a.cmd in ("press", "hold", "release"):
         try:
