@@ -245,6 +245,10 @@ static void do_capture(int surface, int x, int y, int w, int h, int scale)
         reply("ERR surface\n");
         return;
     }
+    if (surface == AGENTIO_SURFACE_LCD && !s_shadow_ok) {
+        reply("ERR no-shadow\n");
+        return;
+    }
     if (scale < 1) scale = 1;
     if (x < 0) x = 0;
     if (y < 0) y = 0;
