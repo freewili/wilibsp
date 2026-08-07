@@ -67,7 +67,9 @@ def parse_blocks(data):
         magic_end, = struct.unpack_from("<I", data, off + BLOCK - 4)
         if magic0 != UF2_MAGIC0 or magic1 != UF2_MAGIC1 or magic_end != UF2_MAGIC_END:
             raise SystemExit(f"uf2check: block {i} has bad UF2 magic")
-        payload = data[off + 32: off + 32 + min(size, 476)]
+        if size > 476:
+            raise SystemExit(f"uf2check: block {i} declares oversized payload {size}")
+        payload = data[off + 32: off + 32 + size]
         yield i, flags, addr, payload
 
 
@@ -92,7 +94,8 @@ def main(argv=None):
 
     # 1. Every payload block inside the declared window. This is the check that
     #    keeps an app off the stock firmware's address.
-    stray = [(i, addr) for i, _f, addr, _pl in payload if not (lo <= addr < hi)]
+    stray = [(i, addr) for i, _f, addr, pl in payload
+             if not (lo <= addr and addr + len(pl) <= hi)]
     if stray:
         i, addr = stray[0]
         where = next((n for n, (wlo, whi) in WINDOWS.items() if wlo <= addr < whi),
