@@ -12,7 +12,7 @@ Commands:
   fw run-app PATH     launch an installed /apps/PATH UF2 on DISPLAY
 Add --print to any build/flash/test command to print the command(s) instead of running.
 """
-import argparse, os, pathlib, shutil, socket, stat, struct, subprocess, sys, time, zlib
+import argparse, json, os, pathlib, shutil, socket, stat, struct, subprocess, sys, time, zlib
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD_DIR = REPO_ROOT / "build"
@@ -32,6 +32,16 @@ BUTTONS = ["grey", "yellow", "green", "blue", "red", "nav_center", "nav_up",
            "nav_down", "nav_left", "nav_right", "home", "ok", "cancel", "page"]
 
 SD_HOST_COMMAND = r"h\x\k"
+# ESP32 flasher, MAIN text-menu paths. "w\a\w <folder>" starts a background
+# flash from an idf.py build folder on the SD card; "w\a\s" reports
+# "flashing progress partition_index partition_count". Both need power zone 5.
+ESP_FLASH_FOLDER_COMMAND = r"w\a\w"
+ESP_FLASH_STATUS_COMMAND = r"w\a\s"
+# MAIN's manifest parser limits, from the Flash From Folder help text in
+# freewilimain/MenuX/fwMenuESP32FlasherConfig.h. Checked on the PC so a bad
+# bundle fails before the SD has been handed around.
+ESP_MANIFEST_MAX_BYTES = 4096
+ESP_MANIFEST_MAX_PARTITIONS = 6
 RUN_APP_COMMAND = r"a\r"
 UF2_MAGIC = (0x0A324655, 0x9E5D5157, 0x0AB16F30)
 
@@ -318,6 +328,180 @@ def install_app(uf2, serial_number=None, timeout=25, port=None, folder=None):
     if volume is not None:
         for source, destination in zip(sources, destinations):
             print(f"installed {source.name} to {destination}")
+
+def _console_send(wire, command, timeout=8):
+    """Send one MAIN console command on an open port; return its reply tokens.
+
+    Replies are framed as "[<path> <payload...> <0|1>]", the trailing flag being
+    the success bit -- the same handshake _set_sd_host uses, factored out so the
+    ESP32 flasher commands can share it and a poll loop can reuse one open port
+    instead of reopening per request."""
+    path = command.split(" ", 1)[0]
+    prefix = "[" + path + " "
+    wire.reset_input_buffer()
+    wire.write(b"\x02" + command.encode("ascii") + b"\n")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        line = wire.readline().decode("utf-8", "replace").strip()
+        if not line.startswith(prefix) or not line.endswith("]"):
+            continue
+        tokens = line[len(prefix):-1].split()
+        wire.write(b"\x02")          # leave firmware navigation at the root
+        if not tokens or tokens[-1] != "1":
+            raise RuntimeError("device rejected {!r}: {}".format(command, line))
+        return tokens[:-1]
+    raise RuntimeError("timeout waiting for MAIN to acknowledge {!r}".format(command))
+
+def _open_main_console(port):
+    try:
+        import serial
+    except ImportError as exc:
+        raise RuntimeError("install pyserial before using 'fw install-bundle'") from exc
+    return serial.Serial(port, 1_000_000, timeout=0.2)
+
+def check_esp_build(folder):
+    """Validate an idf.py build folder the way MAIN's manifest parser will.
+
+    Returns (manifest_path, [(offset, relative_path, source_path), ...]). Fails
+    closed on the PC, so a malformed bundle never reaches the point where the SD
+    card has already been handed over."""
+    root = pathlib.Path(folder).resolve()
+    manifest = root / "flasher_args.json"
+    if not manifest.is_file():
+        raise ValueError("no flasher_args.json in {} -- point at an idf.py build "
+                         "folder (for example build.esp32c5)".format(root))
+    size = manifest.stat().st_size
+    if size > ESP_MANIFEST_MAX_BYTES:
+        raise ValueError("flasher_args.json is {} bytes; MAIN rejects anything over "
+                         "{}".format(size, ESP_MANIFEST_MAX_BYTES))
+    spec = json.loads(manifest.read_text(encoding="utf-8"))
+    files = spec.get("flash_files") or {}
+    if not files:
+        raise ValueError("flasher_args.json has no flash_files entries")
+    if len(files) > ESP_MANIFEST_MAX_PARTITIONS:
+        raise ValueError("{} partitions in flash_files; MAIN rejects more than "
+                         "{}".format(len(files), ESP_MANIFEST_MAX_PARTITIONS))
+    resolved = []
+    for offset, relative in sorted(files.items(), key=lambda kv: int(kv[0], 16)):
+        source = root / relative
+        if not source.is_file():
+            raise ValueError("{} (referenced at {}) is missing from the build "
+                             "folder".format(relative, offset))
+        resolved.append((offset, relative, source))
+    return manifest, resolved
+
+def _copy_esp_build(manifest, entries, destination):
+    """Copy only the manifest and the binaries it references, preserving the
+    relative layout the manifest points at. An idf.py build folder is hundreds
+    of megabytes of object files; the device needs perhaps two."""
+    destination.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(manifest, destination / manifest.name)
+    total = manifest.stat().st_size
+    for _offset, relative, source in entries:
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        with target.open("r+b") as copied:
+            os.fsync(copied.fileno())
+        total += source.stat().st_size
+    return total
+
+def flash_esp_from_device(port, device_folder, timeout=180):
+    """Ask MAIN to flash the ESP32 from a folder already on the SD card, then
+    poll until it finishes. Flashing runs in MAIN's background, so the start
+    command returning success only means it began."""
+    with _open_main_console(port) as wire:
+        _console_send(wire, "{} {}".format(ESP_FLASH_FOLDER_COMMAND, device_folder))
+        print("ESP32 flash started from {}".format(device_folder))
+        deadline = time.monotonic() + timeout
+        last = None
+        # The first poll can legitimately report not-flashing if it lands before
+        # MAIN's background task starts, so require one observed busy sample
+        # before treating "idle" as done.
+        seen_busy = False
+        while time.monotonic() < deadline:
+            tokens = _console_send(wire, ESP_FLASH_STATUS_COMMAND)
+            if len(tokens) < 4:
+                raise RuntimeError("unexpected flash status reply: {!r}".format(tokens))
+            flashing, progress, index, count = (int(t) for t in tokens[:4])
+            if flashing:
+                seen_busy = True
+                line = "  partition {}/{}  {}%".format(index + 1, count, progress)
+                if line != last:
+                    print(line)
+                    last = line
+            elif seen_busy:
+                print("ESP32 flash complete")
+                return
+            time.sleep(0.5)
+        raise RuntimeError("ESP32 flash did not finish within {} s".format(timeout))
+
+def install_bundle(uf2, esp_build, name=None, serial_number=None, timeout=25,
+                   port=None, flash_esp=True, folder=None):
+    """Install a two-processor app: the DISPLAY UF2 and its ESP32 firmware.
+
+    One SD handoff places both artifacts, then MAIN is asked to flash the ESP32
+    from the copy on the card. The DISPLAY half is launched the usual way (on
+    device, or 'fw run-app'). Mirrors install_app's handoff discipline: no
+    Windows eject, settle either side of the mux move."""
+    source = pathlib.Path(uf2).resolve()
+    if source.suffix.lower() != ".uf2" or not source.is_file():
+        raise ValueError("expected an existing .uf2 file, got {!r}".format(uf2))
+    target = check_app_uf2(source)
+    print("verified {}: {} app, no QSPI-flash payloads".format(source.name, target))
+
+    manifest, entries = check_esp_build(esp_build)
+    print("verified ESP32 build: {} partition(s), manifest {} B".format(
+        len(entries), manifest.stat().st_size))
+
+    app_name = name or source.stem
+    folder_parts = _app_subfolder(folder)
+    port = port or _fwfinder_main_port(serial_number)
+    # MAIN addresses the card as drive 1:. The ESP image lives under the app's
+    # own /appdata/<app>/ tree, per docs/app-storage.md.
+    device_folder = "1:/appdata/{}/esp32/".format(app_name)
+
+    baseline = _mounted_volumes()
+    pc_selected = False
+    volume = None
+    destination = None
+    copied_bytes = 0
+    try:
+        _set_sd_host(port, True)
+        pc_selected = True
+        time.sleep(SD_HANDOFF_SETTLE_SECONDS)
+        volume = _wait_for_sd(baseline, timeout)
+
+        apps = volume / "apps"
+        for part in folder_parts:
+            apps /= part
+        apps.mkdir(parents=True, exist_ok=True)
+        temporary = apps / (source.name + ".tmp")
+        shutil.copyfile(source, temporary)
+        with temporary.open("r+b") as copied:
+            os.fsync(copied.fileno())
+        destination = apps / source.name
+        os.replace(temporary, destination)
+
+        esp_destination = volume / "appdata" / app_name / "esp32"
+        copied_bytes = _copy_esp_build(manifest, entries, esp_destination)
+
+        time.sleep(SD_HANDOFF_SETTLE_SECONDS)
+    finally:
+        if pc_selected:
+            _set_sd_host(port, False)
+
+    if volume is None:
+        return
+    print("installed {} to {}".format(source.name, destination))
+    print("installed ESP32 image ({} KiB) to {}".format(copied_bytes // 1024, esp_destination))
+
+    if not flash_esp:
+        print("skipped ESP32 flash; run this on the device console when ready:")
+        print("  {} {}".format(ESP_FLASH_FOLDER_COMMAND, device_folder))
+        return
+
+    flash_esp_from_device(port, device_folder)
 
 def packbits_decode(data, units):
     """Decode PackBits-16 (see bsp/agentio/agentio_proto.h) into a list of
@@ -790,6 +974,18 @@ def main(argv=None):
     sp.add_argument("--port", help="explicit MAIN serial port if fwFinder cannot identify legacy hardware")
     sp.add_argument("--timeout", type=float, default=25,
                     help="seconds to wait for the USB SD reader (default: 25)")
+    sp = sub.add_parser("install-bundle")
+    sp.add_argument("uf2", help="DISPLAY app UF2 to copy into /apps")
+    sp.add_argument("esp_build", help="ESP32 idf.py build folder (contains flasher_args.json)")
+    sp.add_argument("--name", help="bundle name under /appdata (default: the UF2 stem)")
+    sp.add_argument("--folder", help="relative subfolder under /apps for the UF2")
+    sp.add_argument("--no-flash-esp", dest="flash_esp", action="store_false",
+                    help="copy the ESP32 image but do not flash it now")
+    sp.add_argument("--device", help="fwFinder device serial (required when multiple devices are connected)")
+    sp.add_argument("--port", help="explicit MAIN serial port if fwFinder cannot identify legacy hardware")
+    sp.add_argument("--timeout", type=float, default=25,
+                    help="seconds to wait for the USB SD reader (default: 25)")
+
     sp = sub.add_parser("run-app")
     sp.add_argument("path", help="UF2 path relative to /apps")
     sp.add_argument("--device")
@@ -843,6 +1039,9 @@ def main(argv=None):
         print("created", new_app(a.name))
     elif a.cmd == "install-app":
         install_app(a.uf2, a.device, a.timeout, a.port, a.folder)
+    elif a.cmd == "install-bundle":
+        install_bundle(a.uf2, a.esp_build, a.name, a.device, a.timeout, a.port,
+                       a.flash_esp, a.folder)
     elif a.cmd == "run-app":
         run_app(a.path, a.device, a.timeout, a.port)
     elif a.cmd == "screenshot":

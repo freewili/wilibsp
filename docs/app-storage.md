@@ -120,3 +120,50 @@ User-selected exports and deliberately shared or interoperable files may live
 elsewhere. When an app uses such a path, make that intent clear in its UI or
 documentation. Do not hide user-authored files inside `/appdata/` merely to
 satisfy the app-owned-data rule.
+
+## Two-processor apps (DISPLAY + ESP32)
+
+An app whose custom code runs on both the DISPLAY CPU and the ESP32-C5 ships
+two artifacts, and they load by different mechanisms:
+
+| Artifact | Lands at | Loaded by |
+| --- | --- | --- |
+| DISPLAY app `.uf2` | `/apps/<app>.uf2` | the DISPLAY app loader (on-device, or `fw run-app`) |
+| ESP32 firmware | `/appdata/<app>/esp32/` | MAIN's ESP32 flasher, reading `flasher_args.json` |
+
+Install both in one SD handoff:
+
+```bash
+fw install-bundle build/apps/my_app/my_app.uf2 ../my-esp-fw/build.esp32c5
+```
+
+It verifies the UF2 exactly as `fw install-app` does, validates the ESP32
+manifest, copies both, returns the card to MAIN, then asks MAIN to flash the
+ESP32 and polls until it finishes. `--no-flash-esp` stages the image without
+flashing and prints the device-console line to run later. `--name` overrides the
+`/appdata` folder, which defaults to the UF2 stem. `--folder` places the UF2
+under `/apps/<folder>/` the same way `fw install-app` does.
+
+**Only the manifest and the binaries it references are copied** — an `idf.py`
+build folder is around 250 MB, of which the device needs about 1.5 MB.
+
+MAIN's manifest parser is strict, and `fw install-bundle` enforces the same
+limits on the PC so a bad bundle fails before the card has been handed around:
+`flasher_args.json` must be at most 4 KB and list at most 6 partitions, and
+every file it references must exist.
+
+### Flashing the ESP32 is not free
+
+It reboots the radio. MAIN drives BOOT/EN, syncs at 115200, upgrades to 460800,
+writes each partition, then resets the ESP32 back into its application — tens of
+seconds, and Wi-Fi and BLE are down throughout. It also needs **power zone 5**.
+Do not reflash on every app launch. Have the DISPLAY app ask the ESP32 for its
+version (`BNOSE_CMD_GET_INFO` returns one) and reflash only on a mismatch.
+
+### Version skew is the failure mode to design for
+
+The two halves are installed by separate mechanisms, so they *will* drift: a
+user copies a new UF2 by hand, or an ESP32 flash fails halfway. Give the app a
+version check on startup rather than assuming the pair matches. Note that both
+`applink_send()` and MAIN's relay are fire-and-forget — a DISPLAY app talking to
+the wrong ESP32 build gets silence, not an error.

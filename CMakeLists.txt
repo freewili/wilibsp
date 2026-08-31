@@ -20,6 +20,7 @@ add_subdirectory(bsp)
 
 # Reusable non-BSP libraries.
 add_subdirectory(libs/onewili)
+add_subdirectory(libs/applink)
 
 # Each app opts in; add new apps here.
 add_subdirectory(apps/hello_audio)
@@ -38,3 +39,4 @@ add_subdirectory(apps/hello_charger)
 add_subdirectory(apps/hello_agentio)
 add_subdirectory(apps/hello_vref)
 add_subdirectory(apps/hello_psram_exec)
+add_subdirectory(apps/hello_applink)
