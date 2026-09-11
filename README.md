@@ -168,6 +168,7 @@ wilibsp/
 ## License
 
 MIT — see [LICENSE](LICENSE). Vendored third-party components (SEGGER RTT,
-FatFs) keep their own permissive licenses, noted in the LICENSE file and in
-the vendored file headers. Harvested drivers carry the MIT/BSD-3-Clause
+FatFs) keep their own permissive licenses, listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and in the vendored file
+headers. Harvested drivers carry the MIT/BSD-3-Clause
 terms of their source repos where noted.
