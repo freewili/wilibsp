@@ -42,6 +42,7 @@
 // register area occupies the bottom 0x180):
 #define EPX_BUF_OFFSET    0x180u            // 2 x 64 bytes, EPX double buffer
 #define INT_EP_BUF_OFFSET 0x200u            // 64 bytes, hub interrupt endpoint
+#define INT_EP_BUF_SIZE   64u
 #define INT_EP_BUF_STATUS_BIT USB_BUFF_STATUS_EP1_IN_BITS   // bit 2
 static uint8_t *const epx_buf    = (uint8_t *)(USBCTRL_DPRAM_BASE + EPX_BUF_OFFSET);
 static uint8_t *const int_ep_buf = (uint8_t *)(USBCTRL_DPRAM_BASE + INT_EP_BUF_OFFSET);
@@ -479,6 +480,11 @@ static void int_ep_arm(void) {
 void hcd_int_ep_install(uint8_t dev_addr, uint8_t ep_addr, uint16_t mps,
                         uint8_t interval_ms) {
     int_ep_toggle = 0;
+    // The buffer length handed to the SIE is what it may write into the
+    // 64-byte window at INT_EP_BUF_OFFSET, and mps originates in a device
+    // descriptor. usb_parse_config already caps it; cap it here too so the
+    // hardware boundary does not depend on a caller having done so.
+    if (mps > INT_EP_BUF_SIZE) mps = INT_EP_BUF_SIZE;
     int_ep_mps = mps;
     usb_hw->int_ep_addr_ctrl[0] = (uint32_t)dev_addr
         | ((uint32_t)(ep_addr & 0x0F) << USB_ADDR_ENDP_ENDPOINT_LSB);

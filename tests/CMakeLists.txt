@@ -319,3 +319,11 @@ target_include_directories(test_rc_compose PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME rc_compose COMMAND test_rc_compose)
+
+add_executable(test_usb_parse
+    test_usb_parse.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usbhost/usb_parse.c)
+target_include_directories(test_usb_parse PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME usb_parse COMMAND test_usb_parse)
