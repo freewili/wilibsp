@@ -8,9 +8,13 @@
 #define CIC_DECIMATE 64u
 #endif
 
+// A CIC integrator is meant to wrap: the comb stage subtracts the wrapped
+// values back out and recovers the right answer. Wrapping a signed type is
+// undefined behaviour, so the accumulators are unsigned and the result is
+// reinterpreted as signed once the comb cascade has run.
 typedef struct {
-    int32_t integ[CIC_ORDER];   // integrator accumulators
-    int32_t comb[CIC_ORDER];    // comb delay registers (at decimated rate)
+    uint32_t integ[CIC_ORDER];  // integrator accumulators (modular)
+    uint32_t comb[CIC_ORDER];   // comb delay registers (at decimated rate)
     uint32_t phase;             // 0..CIC_DECIMATE-1
 } cic_t;
 
