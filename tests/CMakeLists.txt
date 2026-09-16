@@ -337,3 +337,11 @@ target_include_directories(test_usb_parse PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME usb_parse COMMAND test_usb_parse)
+
+add_executable(test_ft6336_map
+    test_ft6336_map.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/input/ft6336_map.c)
+target_include_directories(test_ft6336_map PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ft6336_map COMMAND test_ft6336_map)
