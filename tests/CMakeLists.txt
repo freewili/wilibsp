@@ -163,6 +163,10 @@ add_executable(test_ir_kaseikyo test_ir_kaseikyo.c ${BSPIR}/ir_decode.c ${BSPIR}
 target_include_directories(test_ir_kaseikyo PRIVATE ${BSPIR} ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ir_kaseikyo COMMAND test_ir_kaseikyo)
 
+add_executable(test_ir_strict_length test_ir_strict_length.c ${BSPIR}/ir_decode.c ${BSPIR}/ir_encode.c ${BSPIR}/ir_protocols.c)
+target_include_directories(test_ir_strict_length PRIVATE ${BSPIR} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ir_strict_length COMMAND test_ir_strict_length)
+
 add_executable(test_ir_dispatch test_ir_dispatch.c ${BSPIR}/ir_decode.c ${BSPIR}/ir_encode.c ${BSPIR}/ir_protocols.c)
 target_include_directories(test_ir_dispatch PRIVATE ${BSPIR} ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ir_dispatch COMMAND test_ir_dispatch)
