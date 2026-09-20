@@ -61,6 +61,7 @@ Windows one — both just call `python tools/fw.py "$@"`).
 | `fw configure`      | Configure `build/` against the pinned Pico SDK + toolchain (`--clean` wipes it first). Rarely needed directly — `fw build` calls it.    |
 | `fw build [app]`    | Configure + build `apps/<app>` for the RP2350B target via `cmake --build --preset target --target <app>` (default app: `hello_display`) |
 | `fw flash [app]`    | Program `build/apps/<app>/<app>.elf` over the cmsis-dap debug probe via OpenOCD (`tools/openocd/freewili2.cfg`)                         |
+| `fw ramrun [app]`   | Load a `no_flash` (SRAM) app over the probe and start it (`tools/openocd/ramrun.tcl`); `fw flash` cannot start SRAM apps (no flash bank at 0x20000000, and its reset boots the stock firmware) |
 | `fw rtt`            | Attach to the target and stream SEGGER RTT diagnostics (OpenOCD RTT server on port 9090)                                                |
 | `fw test`           | Configure + build + run the standalone host CTest tree in `tests/` (MinGW GCC + Ninja on Windows; no Pico SDK, no hardware)             |
 | `fw new-app <name>` | Scaffold `apps/<name>` by copying `apps/template` and rewriting the CMake target name                                                   |
@@ -404,8 +405,8 @@ Since `agentio` (verified 2026-07-26) an agent can drive the board and see the
 panel directly, with no human present. **Use it.** With a CMSIS-DAP probe
 attached:
 
-    fw build <app> && fw flash <app>
-    fw screenshot -o shot.png     # then actually LOOK at the PNG
+    fw build <app> && fw ramrun <app>    # SRAM apps; fw flash is for flash images only
+    fw screenshot -o shot.png     # then actually LOOK at the PNG (not during high-rate traffic: the capture stalls the app)
     fw press green                # inject a button
     fw touch 240 160              # inject a touch
     fw type "hello"               # type through the chord engine
@@ -435,6 +436,13 @@ unverified — do not describe expected behavior in a way that reads like a
 result. `fw flash`/`fw rtt`/`fw screenshot` all need the probe; a board in
 BOOTSEL mass-storage mode can take a UF2 but gives you no RTT channel, so
 none of the agentio verbs work against it.
+
+**Gotcha:** a leftover OpenOCD (from a crashed script) keeps the probe and
+serves an RTT session bound to the image that was loaded when it started, so
+a freshly `fw ramrun` app looks silent. Kill strays before relaunching. After
+a MAIN reflash the on-board probe re-enumerates for a few seconds. Never leave
+a core in debug halt: TIMER0 pauses for both cores (DBGPAUSE) and every sleep
+in the app freezes; `ramrun.tcl` clears those bits after the jump.
 
 **Gotcha:** back-to-back one-shot commands can fail with `openocd did not open
 port 9091 within 10s` because the previous OpenOCD has not released the probe.

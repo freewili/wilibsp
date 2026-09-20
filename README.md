@@ -41,6 +41,7 @@ falls back to the newest version installed under `~/.pico-sdk`.
 ```bash
 fw build            # configure + build apps/hello_display for the RP2350B target
 fw flash            # program it over the debug probe (OpenOCD)
+fw ramrun canblast  # load an SRAM app over the probe and start it (fw flash cannot start SRAM apps)
 fw rtt              # stream live SEGGER RTT diagnostics
 fw install-app app.uf2  # copy a loadable app to SD:/apps and return the card to MAIN
 fw install-app app.uf2 --folder beta/radio  # install to SD:/apps/beta/radio
@@ -132,6 +133,7 @@ wilibsp/
     hello_ir/                 NEC TX->RX loopback + live decode
     hello_usbdrive/           thumb-drive mount + root listing
     hello_sdcard/             SD card read/write over OneWili (main CPU owns the card)
+    canblast/                 CAN FD blaster: high-rate TX/RX through the OneWili display link
   tools/                      fw CLI (fw.py) + POSIX/Windows launchers + its own pytest
   tests/                      standalone host CTest tree (no Pico SDK, no hardware)
   docs/
