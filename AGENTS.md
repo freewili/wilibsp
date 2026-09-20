@@ -26,7 +26,9 @@ built on. Read it before making changes.
   Today: `libs/onewili` — the generated OneWili C command API for driving the
   **main CPU** (GPIO, LEDs, radio, …) over the FwGUI display link (UART0,
   8 Mbaud), plus `ow_sd_*` for reading and writing the **SD card** the main
-  CPU owns (SDFS over the same link). See `libs/onewili/README.md`;
+  CPU owns (SDFS over the same link). The submodule ships every OneWili
+  language package; the display-CPU C package is `libs/onewili/wilibsp`
+  (see its `README.md`);
   `apps/toggleled` and `apps/hello_sdcard` are the worked examples.
 - `tools/fw.py` (+ `tools/fw` / `tools/fw.cmd` launchers) — a cross-platform
   CLI that drives CMake + OpenOCD identically on Windows and Linux.
@@ -460,7 +462,7 @@ the probe once and every one-shot verb reuses it.
 - **On-hardware verification records**: `docs/superpowers/findings/*-e2e.md` —
   what was actually run on the board and what came back. Check here before
   claiming any behavior is confirmed.
-- **Main-CPU control (OneWili over the FwGUI link)**: `libs/onewili/README.md`.
+- **Main-CPU control (OneWili over the FwGUI link)**: `libs/onewili/wilibsp/README.md`.
 - **Related default-firmware subsystems** (implemented upstream in the default
   FreeWili 2 firmware, not in this BSP): LoRa WIO-E5 bridge
   (`docs/drivers/lora.md`), NFC ST25R3916B, ESP32-C5 Bottlenose

@@ -18,7 +18,7 @@ pico_sdk_init()
 add_subdirectory(bsp)
 
 # Reusable non-BSP libraries.
-add_subdirectory(libs/onewili)
+add_subdirectory(libs/onewili/wilibsp)   # the submodule ships every OneWili language package; wilibsp/ is the display-CPU C one
 
 # Each app opts in; add new apps here.
 add_subdirectory(apps/hello_audio)
