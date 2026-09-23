@@ -2,7 +2,7 @@
 #
 # Cold-starting the image from the bootrom panics (the app expects the
 # QMI/PSRAM state the DISPLAY loader leaves behind), so: reset, let the stock
-# DISPLAY firmware boot, halt both cores, park core 1 in a branch-to-self loop
+# DISPLAY firmware boot, halt both cores, park core 1 in a wfi loop
 # with interrupts masked (leaving it in debug halt would pause TIMER0 through
 # DBGPAUSE, and it keeps running stock code in SRAM otherwise), quiesce the
 # watchdog / NVIC / SysTick / DMA the stock firmware left armed, load the ELF
@@ -24,9 +24,14 @@ mww 0xE000E184 0xFFFFFFFF
 mww 0xE000E280 0xFFFFFFFF
 mww 0xE000E284 0xFFFFFFFF
 mww 0xE000E010 0
-mwh 0x20080ffc 0xe7fe
+# Park loop: `wfi` / `b .-2`. With every NVIC enable cleared above, SysTick off
+# and PRIMASK set, nothing wakes core 1, so it sleeps with its clock gated. A
+# bare branch-to-self here kept a whole core executing at the app's 250 MHz for
+# as long as the app ran - a share of the heat a ramrun-launched app produced.
+mwh 0x20080ff8 0xbf30
+mwh 0x20080ffa 0xe7fd
 reg sp 0x20080ff0
-reg pc 0x20080ffc
+reg pc 0x20080ff8
 reg primask 1
 resume
 targets rp2350.cm0

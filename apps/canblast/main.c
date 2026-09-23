@@ -16,7 +16,8 @@
  *
  * Bench control rides SEGGER RTT channel 0 (the DIAG channel): the PC sends
  * one-line commands on the down buffer (ID, RESET, STREAM n, RX run count arb,
- * TX run count len arb fd xtd pipe, TXABORT, STAT, PERIODIC ..., CFG ...) and
+ * TX run count len arb fd xtd pipe, TXABORT, STAT, PERIODIC ..., CFG ...,
+ * and for power work RELEASE, KEEP z, DROP z, TEMP, CODEC, ZONES) and
  * every reply line starts with '='. canfdvalidation/canfdval/wili_display.py
  * is the client.
  *
@@ -458,6 +459,34 @@ static void dispatch(char* line) {
             }
             SEGGER_RTT_printf(0, "=RAWEND total=%d line_len=%u evq=%u\n", total, (unsigned)dev.line_len, (unsigned)dev.evq_count);
         }
+    } else if (strcmp(argv[0], "RELEASE") == 0) {
+        picpwr_release_unused();
+        SEGGER_RTT_printf(0, "=OK release queued\n");
+    } else if (strcmp(argv[0], "KEEP") == 0 || strcmp(argv[0], "DROP") == 0) {
+        /* KEEP zone / DROP zone: switch one rail on or off (power experiments). */
+        int zone = (int)arg_u(argv, argc, 1, 10, 0);
+        if (zone < 1 || zone > 17) { SEGGER_RTT_printf(0, "=ERR zone 1..17\n"); return; }
+        if (argv[0][0] == 'K') (void)picpwr_keep_awake(picpwr_zone_bit(zone));
+        else picpwr_release(picpwr_zone_bit(zone));
+        SEGGER_RTT_printf(0, "=OK %s zone %d\n", argv[0], zone);
+    } else if (strcmp(argv[0], "TEMP") == 0) {
+        /* Die temperature: it only sees heat near the RP2350 (the codec's
+         * speaker amp is not visible here), and it lags by minutes. The
+         * charger frame's current is battery charge current, not system
+         * current, so it is no help on USB power. */
+        SEGGER_RTT_printf(0, "=TEMP mC=%d rails=%x\n",
+                          (int)(board_die_temp_c() * 1000.0f), (unsigned)rails_live);
+    } else if (strcmp(argv[0], "CODEC") == 0) {
+        /* CODEC [DUMP|INIT|LOW]: needs the audio rail up (KEEP 3). INIT leaves
+         * the codec as the stock firmware does while it plays - speaker amp
+         * and 5 V boost on - but with no I2S clocks, which is the state an
+         * app inherits when it is launched over a playing stock firmware. */
+        const char* sub = argc > 1 ? argv[1] : "DUMP";
+        if (strcmp(sub, "INIT") == 0) codec_nau88c10_init();
+        else if (strcmp(sub, "UNMUTE") == 0) codec_nau88c10_dac_mute(false);   /* = the inherited R0A=0x000 */
+        else if (strcmp(sub, "LOW") == 0) codec_nau88c10_speaker_low_power();
+        else codec_nau88c10_dump();   /* register dump on the DIAG stream */
+        SEGGER_RTT_printf(0, "=OK codec %s\n", sub);
     } else if (strcmp(argv[0], "ZONES") == 0) {
         SEGGER_RTT_printf(0, "=ZONES valid=%d rails=%x can=%d\n", rails_valid, (unsigned)rails_live,
                           (int)((rails_live & picpwr_zone_bit(PICPWR_ZONE_CAN)) != 0));
@@ -585,6 +614,13 @@ int main(void) {
     /* The CAN controller sits on power zone 15; a standalone display app owns
      * its power policy. picpwr_task() re-asserts the rail if it drops. */
     picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_CAN));
+#ifndef CANBLAST_POWER_BASELINE
+    /* ...and drop the rails inherited from the stock firmware that this app
+     * has no use for (the audio codec above all); picpwr_task() carries it
+     * out once the CAN rail walk has settled. -DCANBLAST_POWER_BASELINE
+     * keeps them, for a before/after comparison with the RELEASE command. */
+    picpwr_release_unused();
+#endif
     for (int i = 0; i < 150; i++) {          /* ~1.5 s for the rail walk */
         fw2_app_recovery_task();
         picpwr_task();
