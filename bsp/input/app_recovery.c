@@ -5,6 +5,7 @@
 #include "pico/time.h"
 #include "input/uartkbd.h"
 #include "input/app_about.h"
+#include "input/picpwr.h"
 #include "platform/diag.h"
 #endif
 
@@ -36,15 +37,33 @@ bool fw2_app_recovery_state_update(fw2_app_recovery_state_t *state,
 
 #ifndef HOST_TEST
 static fw2_app_recovery_state_t recovery;
+extern const uint32_t fw2app_power_zones;
 #define FW2_APP_RECOVERY_FRAME_MAX_AGE_MS 1100u
 
 void fw2_app_recovery_init(void) {
     uartkbd_init();
     fw2_app_recovery_state_init(&recovery);
+    if (fw2app_power_zones != 0u) {
+        picpwr_keep_awake(fw2app_power_zones);
+        DIAG("app: required power zones=0x%x\n", fw2app_power_zones);
+        uint32_t rails = 0;
+        uint32_t waited_ms = 0;
+        while (!picpwr_rails(&rails) ||
+               (rails & fw2app_power_zones) != fw2app_power_zones) {
+            fw2_app_recovery_task();
+            busy_wait_us_32(10000u);
+            waited_ms += 10u;
+            if (waited_ms % 5000u == 0u)
+                DIAG("app: waiting for power zones have=0x%x need=0x%x\n",
+                     rails, fw2app_power_zones);
+        }
+        DIAG("app: power zones ready=0x%x\n", rails);
+    }
 }
 
 void fw2_app_recovery_task(void) {
     uartkbd_task();
+    picpwr_task();
     fw2_app_about_task();
     const bool home = uartkbd_button_down_fresh(
         UARTKBD_BTN_HOME, FW2_APP_RECOVERY_FRAME_MAX_AGE_MS);

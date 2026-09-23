@@ -73,11 +73,31 @@ static void synth_frame(void)
      * keeps the last real AUDIO/HOTPLUG/USB state intact across the
      * synthetic frame. Once real data has arrived, both restores are a
      * no-op and the charger_raw passthrough still works as before. */
+    /* The 20-byte status payload needs the same treatment, and for a sharper
+     * reason: it is where picpwr_rails_decode() reads live RAIL STATE, and the
+     * synthetic frame carries none — bytes 6..9 above are zero. Letting it
+     * land makes picpwr_rails() report every rail OFF. An app running
+     * picpwr_keep_awake() + picpwr_task() then sees its kept rails missing on
+     * two agreeing frames (a `TAP` injects press AND release, so two synthetic
+     * frames arrive back to back) and re-asserts an awake mask built from that
+     * all-zero snapshot — which switches off every rail it failed to report,
+     * including the LCD (zone 2), the USB hub (8) and the on-board debug probe
+     * (16). Observed on hardware 2026-08-06: one `fw press` took the whole
+     * board off USB until it was re-plugged. Restore it, exactly as above. */
     bool    had_charger = s_parser.charger_valid;
     uint8_t had_flags   = s_parser.flags;
+    bool    had_status  = s_parser.status_valid;
+    uint32_t had_frames = s_parser.frames;
+    uint8_t had_raw[sizeof s_parser.status_raw];
+    memcpy(had_raw, s_parser.status_raw, sizeof had_raw);
+
     for (int i = 0; i < UARTKBD_FRAME_LEN; i++) uartkbd_parse_byte(&s_parser, f[i]);
+
     s_parser.charger_valid = had_charger;
     s_parser.flags         = had_flags;
+    s_parser.status_valid  = had_status;
+    s_parser.frames        = had_frames;
+    memcpy(s_parser.status_raw, had_raw, sizeof had_raw);
 }
 
 void uartkbd_init(void)

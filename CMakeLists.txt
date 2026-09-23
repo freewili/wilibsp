@@ -9,6 +9,7 @@ list(APPEND PICO_BOARD_HEADER_DIRS "${CMAKE_CURRENT_LIST_DIR}/bsp/boards")
 # OFF strips it entirely — no PSRAM shadow, no RTT buffers, no draw-path cost.
 option(FW2_AGENTIO "Build the agentio remote-control/capture harness" ON)
 
+set(PICO_PIO_USB_PATH "${CMAKE_CURRENT_LIST_DIR}/bsp/third_party/Pico-PIO-USB")
 include(pico_sdk_import.cmake)
 project(wilibsp C CXX ASM)
 set(CMAKE_C_STANDARD 11)

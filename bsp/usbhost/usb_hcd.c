@@ -74,7 +74,7 @@ static uint8_t ep0_mps = 8;
 
 void hcd_set_ep0_mps(uint8_t mps) { ep0_mps = mps; }
 
-void hcd_init(void) {
+void fw2_native_usb_hcd_init(void) {
     reset_block_num(RESET_USBCTRL);
     unreset_block_num_wait_blocking(RESET_USBCTRL);
     // usb_host_dpram_t covers the full 4 KB DPRAM (static_assert in

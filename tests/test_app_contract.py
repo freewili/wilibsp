@@ -141,22 +141,40 @@ def test_board_startup_clears_persistent_leds_without_power_request():
     assert "picpwr" not in helper
 
 
-def test_declared_power_zones_are_serviced_and_requested_before_use():
-    """A declared keep-awake request must be maintained and precede init."""
+def test_declared_power_zones_are_runtime_enforced():
+    """Target metadata, not handwritten app loops, owns rail maintenance."""
+    cmake = (ROOT / "bsp/CMakeLists.txt").read_text(encoding="utf-8")
+    generator = (ROOT / "tools/gen_uf2_info.py").read_text(encoding="utf-8")
+    recovery = (ROOT / "bsp/input/app_recovery.c").read_text(encoding="utf-8")
+    assert '"POWER_ZONES"' in cmake
+    assert "--power-zones" in cmake
+    assert "fw2app_power_zones" in generator
+    assert "picpwr_keep_awake(fw2app_power_zones)" in recovery
+    assert "(rails & fw2app_power_zones) != fw2app_power_zones" in recovery
+    assert "app: power zones ready" in recovery
+    assert "picpwr_task();" in recovery
+
+
+def test_lcd_apps_declare_display_power_zone():
     offenders = []
     for source_path in APPS.glob("*/main.c"):
         source = source_path.read_text(encoding="utf-8")
-        request_at = source.find("picpwr_keep_awake(")
-        if request_at < 0:
+        if "st7796_init()" not in source:
             continue
-        if "picpwr_task()" not in source:
-            offenders.append(source_path.parent.name + ": not serviced")
-        peripheral_inits = [source.find(token) for token in (
-            "codec_nau88c10_init()", "cc1101_init()", "ws2812_init(")]
-        peripheral_inits = [at for at in peripheral_inits if at >= 0]
-        if peripheral_inits and request_at > min(peripheral_inits):
-            offenders.append(source_path.parent.name + ": request follows init")
-    assert not offenders, "invalid power-zone lifecycle: " + ", ".join(offenders)
+        cmake = (source_path.parent / "CMakeLists.txt").read_text(encoding="utf-8")
+        if "POWER_ZONES" not in cmake or "DISPLAY" not in cmake:
+            offenders.append(source_path.parent.name)
+    assert not offenders, "LCD apps missing DISPLAY power declaration: " + ", ".join(offenders)
+
+
+def test_native_and_pio_usb_hosts_do_not_export_the_same_hcd_init():
+    """TinyUSB owns hcd_init; the BSP-native MSC host must stay namespaced."""
+    header = (ROOT / "bsp/usbhost/usb_hcd.h").read_text(encoding="utf-8")
+    source = (ROOT / "bsp/usbhost/usb_hcd.c").read_text(encoding="utf-8")
+    assert "fw2_native_usb_hcd_init" in header
+    assert "fw2_native_usb_hcd_init" in source
+    assert "void        hcd_init(void)" not in header
+    assert "void hcd_init(void)" not in source
 
 
 def test_every_app_registers_an_about_surface():
@@ -187,6 +205,8 @@ def test_about_release_restores_the_registered_surface():
     assert "s_restore();" in released
     assert "memcpy(s_lcd_backup" in about
     assert "st7796_blit_rect(" in about
+    assert "fw2_app_about_use_lcd_restore" in about
+    assert "s_shown && s_lcd_modal" in released
 
 
 def test_lcd_about_is_modal_without_blocking_the_app_loop():
@@ -194,8 +214,35 @@ def test_lcd_about_is_modal_without_blocking_the_app_loop():
     display = (ROOT / "bsp/display/st7796.c").read_text(encoding="utf-8")
     assert "st7796_set_write_suppressed(true)" in about
     assert "st7796_set_write_suppressed(false)" in about
+    modal = about[about.index("s_shown = true;"):about.index("const fw2app_uf2_info_t")]
+    assert modal.index("st7796_set_write_suppressed(true)") < modal.index("st7796_flush_wait()")
+    assert modal.index("st7796_flush_wait()") < modal.index("memcpy(s_lcd_backup")
     for function in ("st7796_fill_screen", "st7796_fill_rect",
                      "st7796_blit_rect", "st7796_draw_text",
                      "st7796_flush_async"):
         body = display[display.index("void " + function):]
         assert "s_write_suppressed" in body[:500]
+
+
+def test_psram_bootstrap_keeps_interrupts_off_during_qmi_retime():
+    bootstrap = (ROOT / "bsp/app/psram_bootstrap.c").read_text(encoding="utf-8")
+    assert bootstrap.index("board_init_psram();") < bootstrap.index('"cpsie i"')
+    assert bootstrap.index("spin_locks_reset();") < bootstrap.index("runtime_init_default_alarm_pool();")
+    assert bootstrap.index("spin_locks_reset();") < bootstrap.index("runtime_init_mutex();")
+    assert bootstrap.index("runtime_init_mutex();") < bootstrap.index("runtime_init_default_alarm_pool();")
+    assert bootstrap.index("runtime_init_default_alarm_pool();") < bootstrap.index("board_init_psram();")
+
+
+def test_psram_bootstrap_runs_c_runtime_initializers_before_main():
+    bootstrap = (ROOT / "bsp/app/psram_bootstrap.c").read_text(encoding="utf-8")
+    init = "run_init_array(__init_array_start, __init_array_end);"
+    assert init in bootstrap
+    assert "run_init_array(__preinit_array_start" not in bootstrap
+    assert bootstrap.index("board_init_psram();") < bootstrap.index(init) < bootstrap.index("(void)main();")
+
+
+def test_psram_bootstrap_makes_app_board_init_skip_qmi_retime():
+    board = (ROOT / "bsp/platform/board.c").read_text(encoding="utf-8")
+    assert "if (s_psram_bootstrapped)" in board
+    assert "board_init_inherited();" in board
+    assert board.index("s_psram_bootstrapped = true;") > board.index("psram_reinitialize();")

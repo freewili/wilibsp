@@ -25,6 +25,7 @@ AGENTIO_PORT = 9091          # RTT channel 1: agentio commands + pixels
 AGENTIO_CHANNEL = 1
 AGENTIO_MAGIC = b"FW2C"
 AGENTIO_HEADER_LEN = 18
+SD_HANDOFF_SETTLE_SECONDS = 2
 SURFACES = {"lcd": 0, "dvi": 1}
 # Button indices must match uartkbd_btn_t in bsp/input/uartkbd_parse.h.
 BUTTONS = ["grey", "yellow", "green", "blue", "red", "nav_center", "nav_up",
@@ -33,6 +34,14 @@ BUTTONS = ["grey", "yellow", "green", "blue", "red", "nav_center", "nav_up",
 SD_HOST_COMMAND = r"h\x\k"
 RUN_APP_COMMAND = r"a\r"
 UF2_MAGIC = (0x0A324655, 0x9E5D5157, 0x0AB16F30)
+
+# DISPLAY memory map. The flash window holds the stock DISPLAY firmware, so a
+# loadable app must never target it; `fw install-app` and `fw flash` enforce the
+# same rule from one definition.
+QSPI_FLASH = (0x10000000, 0x11000000)
+APP_WINDOWS = (("SRAM", 0x20000000, 0x20070000),
+               ("PSRAM", 0x11000000, 0x11800000))
+PT_LOAD = 1
 
 def check_app_uf2(path):
     """Fail closed unless every UF2 payload targets DISPLAY SRAM or PSRAM."""
@@ -60,11 +69,9 @@ def check_app_uf2(path):
         seen_blocks.add(block_no)
         if flags & 1 or size == 0:
             continue
-        if 0x10000000 <= address < 0x11000000:
+        if QSPI_FLASH[0] <= address < QSPI_FLASH[1]:
             raise ValueError(f"UF2 block {index} targets QSPI flash at 0x{address:08x}")
-        windows = (("SRAM", 0x20000000, 0x20070000),
-                   ("PSRAM", 0x11000000, 0x11800000))
-        here = next((name for name, start, stop in windows
+        here = next((name for name, start, stop in APP_WINDOWS
                      if size <= 476 and start <= address and address + size <= stop), None)
         if here is None or (target is not None and here != target):
             raise ValueError(f"UF2 block {index} is outside or mixes app-memory windows")
@@ -111,10 +118,21 @@ def _set_sd_host(port, to_pc, timeout=8):
     with serial.Serial(port, 1_000_000, timeout=0.2) as wire:
         wire.reset_input_buffer()
         wire.write(b"\x02" + command.encode("ascii") + b"\n")
+        pending = ""
         while time.monotonic() < deadline:
-            line = wire.readline().decode("utf-8", "replace").strip()
+            pending += wire.readline().decode("utf-8", "replace")
+            if "]" not in pending:
+                continue
+            line, pending = pending.split("]", 1)
+            line = line.strip() + "]"
+            if "[" in line:
+                line = line[line.rfind("["):]
             if not line.startswith("[" + SD_HOST_COMMAND + " "):
                 continue
+            # The state token may be "none" after returning the mux to MAIN
+            # when its immediate remount has not detected the card yet.  The
+            # final success flag reports whether the ownership change itself
+            # reached the hardware, which is the operation requested here.
             if line.endswith(" 1]"):
                 wire.write(b"\x02")       # leave firmware navigation at the root
                 return
@@ -131,7 +149,7 @@ def _app_path(path):
         raise ValueError("app path must name a .uf2 file")
     return "/".join(parts)
 
-def run_app(path, serial_number=None, timeout=15, port=None):
+def run_app(path, serial_number=None, timeout=120, port=None):
     path = _app_path(path)
     port = port or _fwfinder_main_port(serial_number)
     command = f"{RUN_APP_COMMAND} {path}"
@@ -143,15 +161,30 @@ def run_app(path, serial_number=None, timeout=15, port=None):
     with serial.Serial(port, 1_000_000, timeout=0.2) as wire:
         wire.reset_input_buffer()
         wire.write(b"\x02" + command.encode("ascii") + b"\n")
+        queued = False
+        pending = ""
         while time.monotonic() < deadline:
-            line = wire.readline().decode("utf-8", "replace").strip()
-            if not line.startswith("[" + RUN_APP_COMMAND + " "):
+            pending += wire.readline().decode("utf-8", "replace")
+            if "]" not in pending:
                 continue
-            if line.endswith(" 1]"):
+            line, pending = pending.split("]", 1)
+            line = line.strip() + "]"
+            if "[" in line:
+                line = line[line.rfind("["):]
+            if line.startswith("[" + RUN_APP_COMMAND + " "):
+                if not line.endswith(" 1]"):
+                    raise RuntimeError(f"device rejected {command!r}: {line}")
+                queued = True
+                continue
+            # The menu command only queues the blocking load.  MAIN reports
+            # its actual result later under response key "d" after the UART
+            # stub/transfer/launch sequence has completed.
+            if queued and line.startswith("[d "):
+                if not line.endswith(" 1]"):
+                    raise RuntimeError(f"device failed to launch {command!r}: {line}")
                 print(f"launched /apps/{path}")
                 return
-            raise RuntimeError(f"device rejected {command!r}: {line}")
-    raise RuntimeError(f"timeout waiting for MAIN to acknowledge {command!r}")
+    raise RuntimeError(f"timeout waiting for MAIN to launch {command!r}")
 
 def _mounted_volumes():
     """Mounted removable-volume roots. Kept small and dependency-free."""
@@ -235,62 +268,56 @@ def _app_subfolder(folder):
 
 
 def install_app(uf2, serial_number=None, timeout=25, port=None, folder=None):
-    """Hand the SD to the PC, atomically copy UF2 into /apps, eject, hand it back."""
-    source = pathlib.Path(uf2).resolve()
-    if source.suffix.lower() != ".uf2" or not source.is_file():
-        raise ValueError(f"expected an existing .uf2 file, got {uf2!r}")
-    target = check_app_uf2(source)
+    """Hand the SD to the PC once, copy + flush one or more UF2s, then return it."""
+    requested = list(uf2) if isinstance(uf2, (list, tuple)) else [uf2]
+    if not requested:
+        raise ValueError("at least one UF2 is required")
+    sources = [pathlib.Path(item).resolve() for item in requested]
+    for source in sources:
+        if source.suffix.lower() != ".uf2" or not source.is_file():
+            raise ValueError(f"expected an existing .uf2 file, got {str(source)!r}")
+    names = [source.name.lower() for source in sources]
+    if len(names) != len(set(names)):
+        raise ValueError("UF2 inputs must have distinct destination filenames")
+    targets = [check_app_uf2(source) for source in sources]
     folder_parts = _app_subfolder(folder)
-    print(f"verified {target} app: no QSPI-flash payloads")
+    for source, target in zip(sources, targets):
+        print(f"verified {source.name}: {target} app, no QSPI-flash payloads")
     port = port or _fwfinder_main_port(serial_number)
     baseline = _mounted_volumes()
     pc_selected = False
     volume = None
-    unmounted = False
     try:
         _set_sd_host(port, True)
         pc_selected = True
+        time.sleep(SD_HANDOFF_SETTLE_SECONDS)
         volume = _wait_for_sd(baseline, timeout)
         apps = volume / "apps"
         for part in folder_parts:
             apps /= part
         apps.mkdir(parents=True, exist_ok=True)
-        temporary = apps / (source.name + ".tmp")
-        shutil.copyfile(source, temporary)
-        # Windows' CRT rejects fsync() on a read-only descriptor. Open for
-        # update without changing the already-copied contents.
-        with temporary.open("r+b") as copied:
-            os.fsync(copied.fileno())
-        destination = apps / source.name
-        os.replace(temporary, destination)
-        _eject_volume(volume)
-        unmounted = True
-    except BaseException as primary:
-        # Once a filesystem has mounted, never move the mux while it may still
-        # be live or dirty. Try one cleanup eject after copy/fsync/replace (or
-        # after an initial eject failure), and return ownership only when that
-        # succeeds. Otherwise leave the card with the PC: recoverable and much
-        # safer than corrupting it under a mounted host filesystem.
-        if volume is not None and not unmounted:
-            try:
-                _eject_volume(volume)
-                unmounted = True
-            except BaseException as cleanup:
-                raise RuntimeError(
-                    f"app install failed and {volume} could not be safely unmounted; "
-                    "SD remains assigned to the PC. Close open files, safely eject "
-                    "the volume, then return the SD to MAIN"
-                ) from primary
-        # If no volume ever appeared, there is no mounted filesystem to
-        # protect: return the mux to MAIN instead of stranding it with the PC.
-        # Once a volume did appear, retain the stricter eject-before-return
-        # rule above to avoid corruption.
-        if pc_selected and (unmounted or volume is None):
+        destinations = []
+        for source in sources:
+            temporary = apps / (source.name + ".tmp")
+            shutil.copyfile(source, temporary)
+            # Windows' CRT rejects fsync() on a read-only descriptor. Open for
+            # update without changing the already-copied contents.
+            with temporary.open("r+b") as copied:
+                os.fsync(copied.fileno())
+            destination = apps / source.name
+            os.replace(temporary, destination)
+            destinations.append(destination)
+        # fsync above drains the file; allow the removable-volume stack to
+        # finish its bookkeeping before moving the hardware mux.  Do not ask
+        # Windows to eject/unmount this reader: ownership is controlled by the
+        # FreeWili h\x\k command, and Windows eject races that handoff.
+        time.sleep(SD_HANDOFF_SETTLE_SECONDS)
+    finally:
+        if pc_selected:
             _set_sd_host(port, False)
-        raise
-    else:
-        _set_sd_host(port, False)
-        print(f"installed {source.name} to {destination}")
+    if volume is not None:
+        for source, destination in zip(sources, destinations):
+            print(f"installed {source.name} to {destination}")
 
 def packbits_decode(data, units):
     """Decode PackBits-16 (see bsp/agentio/agentio_proto.h) into a list of
@@ -463,8 +490,63 @@ def _openocd_base():
         cmd += ["-s", scripts]
     return cmd + ["-f", OPENOCD_CFG]
 
-def flash_command(app):
+def elf_load_segments(blob):
+    """Loadable (physical address, size) pairs from a 32-bit LE ELF.
+
+    Physical, not virtual: a `copy_to_ram` binary runs from SRAM but is STORED
+    in flash, and it is the stored address a debugger writes.
+    """
+    if blob[:4] != b"\x7fELF" or blob[4:6] != b"\x01\x01":
+        raise ValueError("expected a 32-bit little-endian ELF")
+    phoff = struct.unpack_from("<I", blob, 28)[0]
+    phentsize, phnum = struct.unpack_from("<HH", blob, 42)
+    if phentsize < 32 or phoff + phentsize * phnum > len(blob):
+        raise ValueError("ELF program-header table is truncated")
+    segments = []
+    for index in range(phnum):
+        kind, _off, _vaddr, paddr, filesz, _memsz, _flags, _align = \
+            struct.unpack_from("<8I", blob, phoff + index * phentsize)
+        if kind == PT_LOAD and filesz:
+            segments.append((paddr, filesz))
+    return sorted(segments)
+
+
+def flash_segments_in_qspi(blob):
+    """The loadable segments that would land in the DISPLAY firmware region."""
+    start, stop = QSPI_FLASH
+    return [(addr, size) for addr, size in elf_load_segments(blob)
+            if addr < stop and addr + size > start]
+
+
+def check_flash_elf(path):
+    """Fail closed unless every loadable segment stays out of QSPI flash.
+
+    Writing an ELF at flash base replaces the stock DISPLAY firmware. The
+    recovery loader is fused in OTP so the board still boots, but restoring the
+    firmware is a separate maintenance workflow — not something a build/flash
+    loop should do silently. `pico_set_binary_type(copy_to_ram)` is the usual
+    way to trip this: it runs from SRAM but is stored in flash.
+    """
+    offenders = flash_segments_in_qspi(pathlib.Path(path).read_bytes())
+    if not offenders:
+        return
+    where = ", ".join(f"0x{addr:08x}+{size}" for addr, size in offenders[:4])
+    raise ValueError(
+        f"{path} stores {len(offenders)} loadable segment(s) in QSPI flash "
+        f"({where}).\n"
+        "Programming it would REPLACE the stock DISPLAY firmware.\n"
+        "Build the app with fw2_display_app() so it targets SRAM or PSRAM, then\n"
+        "install it non-destructively with `fw install-app <app>.uf2`.\n"
+        "If replacing the DISPLAY firmware is genuinely what you want, re-run\n"
+        "with `fw flash --replace-display-firmware`.")
+
+
+def flash_command(app, replace_display_firmware=False):
     elf = f"build/apps/{app}/{app}.elf"
+    if not replace_display_firmware:
+        path = REPO_ROOT / elf
+        if path.exists():
+            check_flash_elf(path)
     return _openocd_base() + ["-c", f"program {elf} verify reset exit"]
 
 def ramrun_command(app):
@@ -564,7 +646,10 @@ def run_rtt(seconds=0):
                 data = sock.recv(4096)
                 if not data:
                     break
-                sys.stdout.write(data.decode("ascii", "replace"))
+                # Keep RTT diagnostics printable even on Windows legacy
+                # consoles, where U+FFFD from Python's "replace" handler is
+                # not representable in the active cp1252 stream encoding.
+                sys.stdout.write(data.decode("ascii", "replace").replace("\ufffd", "?"))
                 sys.stdout.flush()
             except socket.timeout:
                 pass
@@ -694,6 +779,10 @@ def main(argv=None):
     for name in ("build", "flash"):
         sp = sub.add_parser(name); sp.add_argument("app", nargs="?", default=DEFAULT_APP)
         sp.add_argument("--print", dest="show", action="store_true")
+        if name == "flash":
+            sp.add_argument("--replace-display-firmware", action="store_true",
+                            help="allow writing QSPI flash, replacing the stock "
+                                 "DISPLAY firmware (maintenance workflow only)")
     sp = sub.add_parser("configure")
     sp.add_argument("--clean", action="store_true", help="wipe build/ before configuring")
     sp.add_argument("--print", dest="show", action="store_true")
@@ -706,7 +795,7 @@ def main(argv=None):
     sp = sub.add_parser("test"); sp.add_argument("--print", dest="show", action="store_true")
     sp = sub.add_parser("new-app"); sp.add_argument("name")
     sp = sub.add_parser("install-app")
-    sp.add_argument("uf2", help="app UF2 to copy into /apps on the device SD card")
+    sp.add_argument("uf2", nargs="+", help="one or more app UF2s to copy in one SD handoff")
     sp.add_argument("--folder", help="relative subfolder under /apps (for example beta/team)")
     sp.add_argument("--device", help="fwFinder device serial (required when multiple devices are connected)")
     sp.add_argument("--port", help="explicit MAIN serial port if fwFinder cannot identify legacy hardware")
@@ -716,7 +805,7 @@ def main(argv=None):
     sp.add_argument("path", help="UF2 path relative to /apps")
     sp.add_argument("--device")
     sp.add_argument("--port")
-    sp.add_argument("--timeout", type=float, default=15)
+    sp.add_argument("--timeout", type=float, default=120)
 
     sp = sub.add_parser("screenshot")
     sp.add_argument("-o", "--out", default="screenshot.png")
@@ -746,7 +835,15 @@ def main(argv=None):
         if not a.show and needs_configure():
             run_configure(clean=BUILD_DIR.exists())
         _run(build_command(a.app), a.show)
-    elif a.cmd == "flash": _run(flash_command(a.app), a.show)
+    elif a.cmd == "flash":
+        try:
+            command = flash_command(a.app, a.replace_display_firmware)
+        except ValueError as exc:
+            # This guard exists to be read, so print it rather than burying the
+            # actionable part under a traceback.
+            print(f"fw flash: refusing to program {a.app}\n{exc}", file=sys.stderr)
+            return 2
+        _run(command, a.show)
     elif a.cmd == "ramrun": _run(ramrun_command(a.app), a.show)
     elif a.cmd == "rtt":
         if a.show:

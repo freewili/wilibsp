@@ -1,6 +1,7 @@
 add_executable(hello_psram_exec main.c)
 target_link_libraries(hello_psram_exec freewili2_bsp)
 fw2_psram_app(hello_psram_exec
+    POWER_ZONES DISPLAY RGB_LEDS
     NAME [=[PSRAM Execute]=]
     VERSION 001
     DESCRIPTION [=[BSP application executing from external PSRAM]=])

@@ -154,7 +154,7 @@ static void enter_failed(void) {
 }
 
 void usb_msc_init(void) {
-    hcd_init();
+    fw2_native_usb_hcd_init();
     teardown();
 }
 

@@ -104,5 +104,35 @@ int main(void)
     uartkbd_charger_t chg;
     ASSERT_TRUE(uartkbd_parse_charger(&p, &chg));
 
+    /* The 20-byte status payload — where picpwr_rails_decode() reads live power
+     * rail state — is latched from EVERY checksum-valid frame, with no notion
+     * of whether that frame came off the wire. Anything that fabricates a frame
+     * to carry an injected button edge therefore has to save and restore it, or
+     * an injected press reports every rail as off and an application holding
+     * rails with picpwr_keep_awake() re-asserts an awake mask built from that
+     * all-zero snapshot — switching off every zone missing from it, the LCD and
+     * the debug probe included. These two asserts pin the behaviour that makes
+     * the save/restore in uartkbd.c's synth_frame() necessary. */
+    uartkbd_parse_init(&p);
+    memset(f, 0, sizeof f);
+    f[0] = 0xBD; f[1] = 0x1D;
+    f[2] = IDLE2; f[3] = IDLE3; f[4] = IDLE4; f[5] = IDLE5;
+    f[6] = 0xA2; f[7] = 0xC7;                  /* rail bits, arbitrary non-zero */
+    sum = 0;
+    for (int i = 0; i < UARTKBD_FRAME_LEN - 1; i++) sum = (uint8_t)(sum + f[i]);
+    f[UARTKBD_FRAME_LEN - 1] = sum;
+    feed(&p, f, UARTKBD_FRAME_LEN);
+    uint8_t status[20];
+    ASSERT_TRUE(uartkbd_parse_status_raw(&p, status));
+    ASSERT_EQ(status[4], 0xA2);                /* payload[i] == frame[2 + i] */
+    ASSERT_EQ(status[5], 0xC7);
+
+    /* An idle frame with an all-zero payload — exactly what a synthetic
+     * injection frame carries — overwrites it. */
+    feed_idle(&p);
+    ASSERT_TRUE(uartkbd_parse_status_raw(&p, status));
+    ASSERT_EQ(status[4], 0x00);
+    ASSERT_EQ(status[5], 0x00);
+
     TEST_RETURN();
 }

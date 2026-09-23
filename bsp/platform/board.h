@@ -27,6 +27,8 @@
 // --- IR receiver/transmitter (PIO2 SMs) ---
 #define PIN_IR_TX  20   // IR transmitter LED (PIO carrier-modulated, pio2)
 #define PIN_IR_RX  24   // IR receiver, TSOP-style demodulated envelope: idle HIGH, mark = LOW
+#define PIN_PIO_USB_DP 42
+#define PIN_PIO_USB_DM 43
 
 // --- I2C1 (touch, sensors) ---
 #define PIN_I2C1_SDA   26

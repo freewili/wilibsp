@@ -10,7 +10,7 @@ typedef enum {
     MSC_DISCONNECTED,     // device removed
 } msc_result_t;
 
-void     usb_msc_init(void);     // hcd_init + state machine reset
+void     usb_msc_init(void);     // native USB HCD init + state machine reset
 void     usb_msc_task(void);     // call from main loop; drives hotplug + enum
 bool     usb_msc_ready(void);
 uint32_t usb_msc_block_count(void);

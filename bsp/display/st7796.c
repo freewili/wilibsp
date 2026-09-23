@@ -265,6 +265,10 @@ bool st7796_flush_busy(void) {
     return flush_in_flight;
 }
 
+void st7796_flush_wait(void) {
+    while (flush_in_flight) tight_loop_contents();
+}
+
 void st7796_set_write_suppressed(bool suppressed) {
     s_write_suppressed = suppressed;
 }

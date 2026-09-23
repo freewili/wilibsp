@@ -13,7 +13,15 @@
 #include "hardware/resets.h"
 #include "hardware/vreg.h"
 
-void board_init(void) { board_init_clk(BOARD_SYS_CLOCK_KHZ); }
+static bool s_psram_bootstrapped;
+
+void board_init(void) {
+    if (s_psram_bootstrapped) {
+        board_init_inherited();
+        return;
+    }
+    board_init_clk(BOARD_SYS_CLOCK_KHZ);
+}
 
 static void board_init_peripherals(bool clear_leds) {
     if (clear_leds) {
@@ -107,6 +115,10 @@ void board_init_psram(void) {
                            PICO_DEFAULT_PSRAM_MIN_DESELECT);
     psram_reinitialize();
     board_init_peripherals(false);
+    /* A PSRAM executable still calls board_init() at the start of main like
+     * every FW2 app.  Remember that clocks/QMI are already ready so that call
+     * initializes inherited peripherals without re-timing the executing bus. */
+    s_psram_bootstrapped = true;
 }
 
 void board_backlight_set(uint8_t level) {

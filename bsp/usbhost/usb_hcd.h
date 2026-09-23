@@ -16,7 +16,7 @@ typedef enum {
     HCD_SPEED_FULL = 2,
 } hcd_speed_t;
 
-void        hcd_init(void);
+void        fw2_native_usb_hcd_init(void);
 hcd_speed_t hcd_port_speed(void);   // current SIE_STATUS.SPEED
 void        hcd_bus_reset(void);    // drive USB reset + recovery delay
 

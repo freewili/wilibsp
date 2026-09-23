@@ -7,7 +7,7 @@ SECTIONS
     {
         __sram_boot_start__ = .;
         KEEP(*(.sram_bootstrap .sram_bootstrap.*))
-        bsp/libfreewili2_bsp.a:*(.text* .rodata* .srodata*)
+        *libfreewili2_bsp.a:*(.text* .rodata* .srodata*)
         *platform.c.obj(.text* .rodata* .srodata*)
         *common.c.obj(.text* .rodata* .srodata*)
         *panic.c.obj(.text* .rodata* .srodata*)

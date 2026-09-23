@@ -40,7 +40,9 @@ falls back to the newest version installed under `~/.pico-sdk`.
 
 ```bash
 fw build            # configure + build apps/hello_display for the RP2350B target
-fw flash            # program it over the debug probe (OpenOCD)
+fw flash            # program it over the debug probe (OpenOCD); refuses an
+                    # image stored in flash, which would replace the
+                    # stock DISPLAY firmware
 fw ramrun canblast  # load an SRAM app over the probe and start it (fw flash cannot start SRAM apps)
 fw rtt              # stream live SEGGER RTT diagnostics
 fw install-app app.uf2  # copy a loadable app to SD:/apps and return the card to MAIN
@@ -168,6 +170,7 @@ wilibsp/
 ## License
 
 MIT — see [LICENSE](LICENSE). Vendored third-party components (SEGGER RTT,
-FatFs) keep their own permissive licenses, noted in the LICENSE file and in
-the vendored file headers. Harvested drivers carry the MIT/BSD-3-Clause
+FatFs) keep their own permissive licenses, listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and in the vendored file
+headers. Harvested drivers carry the MIT/BSD-3-Clause
 terms of their source repos where noted.

@@ -55,6 +55,9 @@ void st7796_flush_async(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
 // shared SPI1 bus for a CC1101 burst, enforcing the single-SPI-owner invariant.
 bool st7796_flush_busy(void);
 
+/* Wait until an async DMA flush has drained SPI and released the panel CS. */
+void st7796_flush_wait(void);
+
 /* Temporarily discard app drawing while a modal BSP overlay is visible. */
 void st7796_set_write_suppressed(bool suppressed);
 

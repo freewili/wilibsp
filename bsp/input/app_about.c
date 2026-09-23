@@ -17,6 +17,7 @@ extern const char fw2app_repository_url[];
 
 static fw2_app_about_renderer_t s_renderer;
 static void (*s_restore)(void);
+static bool s_lcd_modal;
 static uint8_t __uninitialized_psram("app_about")
     s_lcd_backup[(size_t)ST7796_W * ST7796_H * 2];
 static bool s_tracking;
@@ -46,11 +47,18 @@ void fw2_app_about_set_renderer(fw2_app_about_renderer_t renderer,
                                 void (*restore)(void)) {
     s_renderer = renderer;
     s_restore = restore;
+    s_lcd_modal = false;
 }
 
 void fw2_app_about_use_lcd(void) {
     agentio_shadow_begin();
     fw2_app_about_set_renderer(lcd_renderer, lcd_restore);
+    s_lcd_modal = true;
+}
+
+void fw2_app_about_use_lcd_restore(void (*restore)(void)) {
+    fw2_app_about_set_renderer(lcd_renderer, restore);
+    s_lcd_modal = true;
 }
 
 void fw2_app_about_task(void) {
@@ -58,7 +66,7 @@ void fw2_app_about_task(void) {
                                           FRAME_MAX_AGE_MS);
     uint32_t now = (uint32_t)(time_us_64() / 1000u);
     if (!down) {
-        if (s_shown) {
+        if (s_shown && s_lcd_modal) {
             st7796_set_write_suppressed(false);
         }
         if (s_shown && s_restore)
@@ -76,14 +84,22 @@ void fw2_app_about_task(void) {
         (uint32_t)(now - s_pressed_at) < ABOUT_HOLD_MS)
         return;
     s_shown = true;
-    if (s_restore == lcd_restore) {
-        const uint8_t *screen = agentio_shadow_fb();
-        if (screen)
-            memcpy(s_lcd_backup, screen, sizeof s_lcd_backup);
+    if (s_lcd_modal) {
+        /* Stop the producer first, then drain the DMA transaction already in
+         * flight. Otherwise an LVGL partial flush can finish after About is
+         * drawn and overwrite an arbitrary strip of the modal page. */
+        st7796_set_write_suppressed(true);
+        st7796_flush_wait();
+        if (s_restore == lcd_restore) {
+            const uint8_t *screen = agentio_shadow_fb();
+            if (screen)
+                memcpy(s_lcd_backup, screen, sizeof s_lcd_backup);
+        }
+        st7796_set_write_suppressed(false);
     }
     const fw2app_uf2_info_t *info =
         (const fw2app_uf2_info_t *)fw2app_uf2_info;
     s_renderer(info->name, info->app_version, fw2app_repository_url);
-    if (s_restore == lcd_restore)
+    if (s_lcd_modal)
         st7796_set_write_suppressed(true);
 }

@@ -37,6 +37,14 @@ This prevents an app from replacing the stock DISPLAY firmware. DISPLAY's
 recovery loader itself is immutable OTP code, not a flash-resident region;
 firmware replacement is an explicit maintenance workflow, not app installation.
 
+`fw flash` enforces the same rule on the ELF it programs over the debug probe,
+so the two paths onto the device agree. A `fw2_display_app()` target is
+`no_flash` and loads into SRAM, so `fw flash` remains the normal debug loop for
+it. What `fw flash` now refuses is an image *stored* in flash — most often
+`pico_set_binary_type(copy_to_ram)`, which runs from SRAM but is stored at flash
+base, so programming it replaces the DISPLAY firmware without ever saying so.
+Deliberate firmware replacement needs `fw flash --replace-display-firmware`.
+
 ## Publishing apps
 
 The loadable `.uf2` is part of the FreeWili app contract. App repositories
@@ -102,12 +110,13 @@ Before publishing a PSRAM app, make the build verify all of the following:
 
 ## App-owned data
 
-Apps should normally keep their saved data under `/appdata/<app-name>/`; for
-example, Meshtastic uses `/appdata/meshtastic/`. Keeping maps, logs,
-preferences, and other app-owned files there makes the card root easier to
-navigate and makes ownership clear.
+Apps must keep app-owned persistent data under `/appdata/<app-name>/`; for
+example, Meshtastic uses `/appdata/meshtastic/`. This includes preferences,
+saves, logs, generated maps, caches, and similar files. Create `/appdata/` and
+the app-specific directory before the first write. Do not put app-owned files
+at the SD root or directly in `/appdata/`.
 
-This is a convention for convenience, not a filesystem restriction. An app
-may use the root or another location when that is genuinely useful to the
-user. Do not hide user-authored files inside `/appdata/` merely to satisfy the
-convention.
+User-selected exports and deliberately shared or interoperable files may live
+elsewhere. When an app uses such a path, make that intent clear in its UI or
+documentation. Do not hide user-authored files inside `/appdata/` merely to
+satisfy the app-owned-data rule.

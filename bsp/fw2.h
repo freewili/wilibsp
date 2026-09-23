@@ -48,6 +48,7 @@
 #include "ir/ir_resolve.h"   // (harvested: .ir entry -> timings resolver, pure)
 
 #include "usbhost/usb_store.h"  // (harvested: USB thumb-drive mount manager, WiliIR/usbmsc)
+#include "pio_usb_host/fw2_pio_usb_host.h" // PIO-USB keyboard/mouse/gamepad host
 #include "keyboard/fw2kb.h"     // (harvested: two-press chord keyboard engine, ../wilikeyboard)
 #include "input/uartkbd.h"      // (FW2 UART keyboard: 14 buttons @ UART1 62500, GPIO38/39)
 

@@ -66,8 +66,8 @@ once each one gets a driver** — do not assume `FwDisplayVibe.md` is exact
 | Haptic motor | 46 | Haptic driver | TODO |
 | Buttons TX | 38 | 14-button serial coprocessor (UART out) | TODO |
 | Buttons RX | 39 | 14-button serial coprocessor (UART in) | TODO |
-| PIO-USB D+ | 42 | Pico-PIO-USB host port | TODO |
-| PIO-USB D- | 43 | Pico-PIO-USB host port | TODO |
+| PIO-USB D+ | 42 | PIO-USB HID host root port 1 |
+| PIO-USB D- | 43 | PIO-USB HID host root port 1 |
 
 Peripherals on I2C1 (SDA=26 / SCL=27, same bus as touch) with no dedicated
 GPIOs of their own, per `FwDisplayVibe.md`:

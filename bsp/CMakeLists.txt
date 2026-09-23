@@ -64,12 +64,26 @@ add_library(freewili2_bsp STATIC
     usbhost/usb_parse.c
     usbhost/msc_disk.c
     usbhost/usb_store.c
+    pio_usb_host/fwUSBHost.cpp
+    pio_usb_host/fwUSBHostHID.cpp
+    pio_usb_host/fwUSBHostHIDKeyboard.cpp
+    pio_usb_host/fwUSBHostHIDMouse.cpp
+    pio_usb_host/fwUSBHostHIDGeneric.cpp
+    pio_usb_host/fwUSBHostHIDController.cpp
+    pio_usb_host/fwUSBHostCDC.cpp
+    pio_usb_host/fwUSBHostMSC.cpp
+    pio_usb_host/fwUSBHostXInput.cpp
+    pio_usb_host/fw2_pio_usb_host.cpp
+    pio_usb_host/tusb_xinput/xinput_host.c
     third_party/fatfs/ff.c
     third_party/fatfs/ffunicode.c
     third_party/segger_rtt/SEGGER_RTT.c
     third_party/segger_rtt/SEGGER_RTT_printf.c)
 
-target_include_directories(freewili2_bsp PUBLIC
+target_include_directories(freewili2_bsp BEFORE PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/pio_usb_host
+    ${CMAKE_CURRENT_SOURCE_DIR}/pio_usb_host/tusb_xinput
+    ${PICO_SDK_PATH}/lib/tinyusb/src
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/segger_rtt
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fatfs)
@@ -85,9 +99,22 @@ target_link_libraries(freewili2_bsp PUBLIC
     hardware_psram
     hardware_pwm
     hardware_adc
-    hardware_watchdog)
+    hardware_watchdog
+    tinyusb_pico_pio_usb)
+
+target_sources(freewili2_bsp PRIVATE
+    ${PICO_SDK_PATH}/lib/tinyusb/src/tusb.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/common/tusb_fifo.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/host/usbh.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/host/hub.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/class/cdc/cdc_host.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/class/hid/hid_host.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/class/msc/msc_host.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/class/vendor/vendor_host.c
+    ${PICO_SDK_PATH}/lib/tinyusb/src/portable/raspberrypi/pio_usb/hcd_pio_usb.c)
 
 target_compile_definitions(freewili2_bsp PUBLIC FW2_AGENTIO=$<BOOL:${FW2_AGENTIO}>)
+target_compile_definitions(freewili2_bsp PRIVATE CFG_TUSB_MCU=OPT_MCU_RP2040)
 
 # GDO0 = GPIO32; PIO must use the GPIO base window 16..47 to reach it.
 target_compile_definitions(freewili2_bsp PUBLIC PICO_PIO_USE_GPIO_BASE=1)
@@ -116,7 +143,7 @@ set(FW2_TOOLS_DIR "${CMAKE_CURRENT_LIST_DIR}/../tools" CACHE PATH
     "Directory containing FW2 build validation tools")
 
 function(fw2_display_app target)
-    cmake_parse_arguments(PARSE_ARGV 1 APP "" "NAME;VERSION;DESCRIPTION;REPOSITORY" "")
+    cmake_parse_arguments(PARSE_ARGV 1 APP "" "NAME;VERSION;DESCRIPTION;REPOSITORY" "POWER_ZONES")
     if(NOT APP_NAME)
         set(APP_NAME "${target}")
     endif()
@@ -147,6 +174,34 @@ function(fw2_display_app target)
 
     string(REGEX REPLACE "^0+([0-9])" "\\1" _version_number
            "${APP_VERSION}")
+    set(_power_zone_mask 0)
+    foreach(_zone IN LISTS APP_POWER_ZONES)
+        if(_zone STREQUAL "SENSORS")
+            set(_zone_number 1)
+        elseif(_zone STREQUAL "DISPLAY")
+            set(_zone_number 2)
+        elseif(_zone STREQUAL "AUDIO")
+            set(_zone_number 3)
+        elseif(_zone STREQUAL "SUBGHZ")
+            set(_zone_number 4)
+        elseif(_zone STREQUAL "SDCARD")
+            set(_zone_number 7)
+        elseif(_zone STREQUAL "USB_HUB")
+            set(_zone_number 8)
+        elseif(_zone STREQUAL "RGB_LEDS")
+            set(_zone_number 10)
+        elseif(_zone STREQUAL "ANALOG")
+            set(_zone_number 11)
+        elseif(_zone STREQUAL "NFC_RFID")
+            set(_zone_number 13)
+        elseif(_zone STREQUAL "CAN")
+            set(_zone_number 15)
+        else()
+            message(FATAL_ERROR "${target}: unknown POWER_ZONES entry '${_zone}'")
+        endif()
+        math(EXPR _power_zone_mask
+             "${_power_zone_mask} | (1 << (${_zone_number} - 1))")
+    endforeach()
     set(_dir "${CMAKE_CURRENT_BINARY_DIR}/${target}_uf2_info")
     file(MAKE_DIRECTORY "${_dir}")
     add_custom_command(
@@ -157,6 +212,7 @@ function(fw2_display_app target)
                 --name "${APP_NAME}"
                 --description "${APP_DESCRIPTION}"
                 --repository "${APP_REPOSITORY}"
+                --power-zones "${_power_zone_mask}"
         DEPENDS "${FW2_TOOLS_DIR}/gen_uf2_info.py"
         COMMENT "Generating FW2 app metadata for ${target}"
         VERBATIM)
