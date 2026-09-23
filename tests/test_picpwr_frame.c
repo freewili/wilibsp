@@ -118,8 +118,51 @@ static void test_reassert_is_superset(void)
               PICPWR_ZONE_MASK_ALL);
 }
 
+/* A release clears exactly the released rails: every other live rail is
+ * carried over, and a rail the app keeps survives even when the release
+ * mask names it. */
+static void test_release_clears_only_the_released(void)
+{
+    const uint32_t audio = picpwr_zone_bit(PICPWR_ZONE_AUDIO);
+    const uint32_t leds  = picpwr_zone_bit(PICPWR_ZONE_RGB_LEDS);
+    const uint32_t can   = picpwr_zone_bit(PICPWR_ZONE_CAN);
+    const uint32_t disp  = picpwr_zone_bit(PICPWR_ZONE_DISPLAY);
+    const uint32_t probe = picpwr_zone_bit(PICPWR_ZONE_DEBUG_PROBE);
+
+    /* The bench case: rails inherited from the stock firmware (0xE3C7),
+     * CAN kept, app-owned rails released -> audio and RGB LEDs go, the
+     * rest stays. */
+    ASSERT_EQ(picpwr_release_awake(0x00E3C7u, can, PICPWR_ZONE_MASK_APP_OWNED),
+              0x00E3C7u & ~(audio | leds));
+
+    /* A kept rail is never cleared, even if the release mask names it. */
+    ASSERT_EQ(picpwr_release_awake(disp | audio | probe, audio, audio),
+              disp | audio | probe);
+
+    /* A kept rail that reads off is switched on by the same frame. */
+    ASSERT_EQ(picpwr_release_awake(disp | audio, can, audio), disp | can);
+
+    /* Releasing a rail that is already off changes nothing else. */
+    ASSERT_EQ(picpwr_release_awake(disp | probe, 0, audio), disp | probe);
+
+    /* Reserved bits never survive. */
+    ASSERT_EQ(picpwr_release_awake(0xFFFFFFu, 0, audio),
+              PICPWR_ZONE_MASK_ALL & ~audio);
+}
+
+/* The app-owned set is the display CPU's own peripherals and nothing that
+ * serves the main CPU or the session (display, SD, USB, probe, CAN...). */
+static void test_app_owned_set(void)
+{
+    ASSERT_EQ(PICPWR_ZONE_MASK_APP_OWNED,
+              picpwr_zone_bit(PICPWR_ZONE_AUDIO) | picpwr_zone_bit(PICPWR_ZONE_SUBGHZ) |
+              picpwr_zone_bit(PICPWR_ZONE_RGB_LEDS) | picpwr_zone_bit(PICPWR_ZONE_NFC_RFID));
+}
+
 int main(void)
 {
+    test_release_clears_only_the_released();
+    test_app_owned_set();
     test_frame_worked_example();
     test_frame_mask_placement();
     test_frame_reserved_bits_stripped();

@@ -307,14 +307,26 @@ for the full zone map, per-zone cautions, and the protocol):
 ```c
 fw2_app_recovery_init();                              // keyboard link + HOME recovery
 picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_AUDIO)); // or _CAN, _RGB_LEDS, ...
+picpwr_release_unused();   // and drop the inherited rails this app does NOT use
 // rails take ~1 s to apply; THEN init the peripheral
 ...
 while (true) {
     fw2_app_recovery_task();
-    picpwr_task();     // re-asserts your rails if the sequencer drops them
+    picpwr_task();     // re-asserts your rails if the sequencer drops them,
+                       // and carries out the queued release
     ...
 }
 ```
+
+**An app that runs hot is a rail that was never released.** An app inherits
+the rails of whatever ran before it — not the boot-on set — and nothing but
+the app will ever switch them off; the audio rail in particular is sometimes
+inherited on, with the codec left mid-playback. `picpwr_release_unused()`
+drops the app-owned rails (audio, sub-GHz/LoRa, RGB LEDs, NFC) the app did
+not ask for. The CPU is not the problem: sleeping the 250 MHz core 97% of the
+time moved the die ~1 C on the bench, so do not reach for WFI loops.
+`docs/drivers/power.md` ("Releasing rails"); `board_die_temp_c()`
+(`bsp/platform/power.h`) for before/after checks.
 
 A key qualification for anyone running **against the stock firmware**
 instead of a standalone BSP app: the default DISPLAY image runs an

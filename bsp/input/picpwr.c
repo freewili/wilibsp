@@ -69,9 +69,17 @@ bool picpwr_send(const picpwr_cfg_t *cfg)
     return true;
 }
 
+/* Rails this app switched off with picpwr_release*(). The additive helpers
+ * rebuild their masks from LIVE rail state, and a released rail still reads
+ * as powered until its walk completes (and in any stale snapshot after
+ * that); without this they would quietly switch it back on. Cleared for a
+ * rail the moment the app asks for it again. */
+static uint32_t s_dropped;
+
 bool picpwr_ensure_awake(uint32_t zone_bits)
 {
     zone_bits &= PICPWR_ZONE_MASK_ALL;
+    s_dropped &= ~zone_bits;
     uint32_t rails;
     if (!rails_stable(&rails)) return false;
     rails &= PICPWR_ZONE_MASK_ALL;
@@ -80,7 +88,7 @@ bool picpwr_ensure_awake(uint32_t zone_bits)
     /* Rails come from live state ORed with the request — strictly
      * additive, so no rail that currently reads as powered is ever
      * cleared by this helper. picpwr_send() clamps to zones 1..17. */
-    cfg.awake = rails | zone_bits;
+    cfg.awake = (rails | zone_bits) & ~s_dropped;
     return picpwr_send(&cfg);
 }
 
@@ -127,8 +135,52 @@ bool picpwr_cycle(uint32_t zone_bits)
     return true;
 }
 
+static uint32_t s_release;      /* rails waiting to be switched off by picpwr_task() */
+
+void picpwr_release(uint32_t zone_bits)
+{
+    zone_bits &= PICPWR_ZONE_MASK_ALL;
+    s_desired &= ~zone_bits;
+    s_release |= zone_bits;
+}
+
+void picpwr_release_unused(void)
+{
+    s_release |= PICPWR_ZONE_MASK_APP_OWNED & ~s_desired;
+}
+
+/* The pending release, evaluated once per status frame. Like the re-assert
+ * below it acts only when two consecutive frames agree on the rail state,
+ * and the send rate limit spaces it past any rail walk still in progress;
+ * until both allow it the request simply stays pending. */
+static void release_service(uint32_t rails, bool rails_settled)
+{
+    s_release &= ~s_desired;             /* a rail kept since is not released */
+    if (!s_release || !rails_settled) return;
+    if (!(rails & s_release)) { s_release = 0; return; }
+    picpwr_cfg_t cfg = s_cache;
+    cfg.awake = picpwr_release_awake(rails, s_desired, s_release);
+    if (!picpwr_send(&cfg)) return;
+    DIAG("picpwr: released rails %05x (awake %05x)\n",
+         (unsigned)(rails & s_release), (unsigned)cfg.awake);
+    s_dropped |= s_release;
+    s_release = 0;
+}
+
 void picpwr_task(void)
 {
+    if (s_release) {
+        static uint32_t rel_frame, rel_prev;
+        static bool     rel_have_prev;
+        uint32_t f = uartkbd_frames(), r;
+        if (f != rel_frame && picpwr_rails(&r)) {
+            rel_frame = f;
+            r &= PICPWR_ZONE_MASK_ALL;
+            release_service(r, rel_have_prev && r == rel_prev);
+            rel_prev = r;
+            rel_have_prev = true;
+        }
+    }
     if (!s_desired) return;
     static uint32_t last_frame;
     static uint32_t prev_rails;
@@ -153,6 +205,6 @@ void picpwr_task(void)
         return;
     }
     picpwr_cfg_t cfg = s_cache;
-    cfg.awake = picpwr_reassert_awake(s_cache.awake, rails, s_desired);
+    cfg.awake = picpwr_reassert_awake(s_cache.awake, rails, s_desired) & ~s_dropped;
     if (picpwr_send(&cfg)) missing = false;
 }

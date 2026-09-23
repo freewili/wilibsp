@@ -51,6 +51,29 @@ bool picpwr_ensure_awake(uint32_t zone_bits);
  * loop, and the driver handles the rest. */
 bool picpwr_keep_awake(uint32_t zone_bits);
 
+/* Switch the given rails OFF, preserving every other live rail, and drop
+ * them from the keep-awake set. Non-blocking: the request is carried out
+ * by picpwr_task() once two status frames agree on the rail state and the
+ * send rate limit allows it (typically 2-3 s). Quiesce the peripheral
+ * first (mute the codec, stop the radio); its pins should not be left
+ * driving an unpowered part. */
+void picpwr_release(uint32_t zone_bits);
+
+/* Startup power policy for a standalone app: release every app-owned rail
+ * (PICPWR_ZONE_MASK_APP_OWNED: audio codec, sub-GHz/LoRa, RGB LEDs,
+ * NFC/RFID) that has not been requested with picpwr_keep_awake().
+ *
+ * An app does not start from the documented boot-on set. It inherits the
+ * rails of whatever ran before it — the stock firmware halted mid-boot by
+ * `fw ramrun`, or the loader — and nothing else will ever switch them off:
+ * the zone manager that does so is part of the firmware the app replaced.
+ * The audio rail is the expensive one: it is inherited with the codec's
+ * speaker amplifier and 5 V boost enabled and its clocks stopped, and the
+ * board runs hot for as long as the app does. Call this after the app's
+ * picpwr_keep_awake() requests; rails that serve the main CPU are never
+ * touched. */
+void picpwr_release_unused(void);
+
 /* Power-cycle selected rails while preserving every other live rail. If a
  * selected rail is already off it remains off. Blocks through the two
  * sequencer walks while continuing to service app recovery/status input. */

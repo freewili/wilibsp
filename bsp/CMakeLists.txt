@@ -6,6 +6,7 @@ add_library(freewili2_bsp STATIC
     agentio/agentio_shadow.c
     platform/board.c
     platform/ioexp.c
+    platform/power.c
     platform/psram.c
     platform/spi_bus.c
     display/st7796.c
@@ -83,6 +84,7 @@ target_link_libraries(freewili2_bsp PUBLIC
     hardware_vreg
     hardware_psram
     hardware_pwm
+    hardware_adc
     hardware_watchdog)
 
 target_compile_definitions(freewili2_bsp PUBLIC FW2_AGENTIO=$<BOOL:${FW2_AGENTIO}>)
