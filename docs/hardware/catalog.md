@@ -54,7 +54,7 @@ firmware or planning a harvest:
 |---|---|---|
 | LoRa — WIO-E5 bridge | DISPLAY core: LoRa bridge + FwGUI RPC 0x66–0x6A; bridge fw in a companion WIO repo; pairs with a Meshtastic display-firmware fork | this repo `docs/drivers/lora.md`; the default firmware's LoRa documentation |
 | NFC — ST25R3916B | DISPLAY core: NFC driver, FwGUI RPC 0x6F–0x71, events 52 `nfcSnapshot` / 53 `nfcText`, MIFARE Crypto1 on-device | the default firmware's NFC documentation |
-| Wi-Fi/BLE — ESP32-C5 (Bottlenose) | MAIN core: the ESP32 bridge over the PIO-UART (runtime UART TX 32/34, RX 33/35); no public standalone ESP32 repo — firmware ships as a release asset | the default firmware's PIO-allocation notes (zone 5) |
+| Wi-Fi/BLE — ESP32-C5 (Bottlenose) | MAIN core: the ESP32 bridge over the PIO-UART (runtime UART TX 32/34, RX 33/35); no public standalone ESP32 repo — firmware ships as a release asset. **Reachable from a display app** through OneWili peer streams (`libs/onewili`, `ow_stream_*`) when the ESP32 runs a BSP app; verified 2026-09-28 with `apps/dualcpu` | the default firmware's PIO-allocation notes (zone 5); `AGENTS.md` "The ESP32-C5 and peer streams"; `docs/superpowers/findings/2026-09-28-dualcpu-renumbered-ids-rerun.md` |
 | CM0 Linux module (BCM2837) | MAIN/FPGA-side: bridge daemon + OneWili C/Python bindings | the default firmware's CM0-bridge documentation |
 | Automatic power-zone manager | DISPLAY core: zone-manager family; host-tested | this repo `docs/drivers/power.md` |
 

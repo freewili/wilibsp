@@ -10,10 +10,14 @@ RGB LEDs, full-duplex I2S audio (NAU88C10), the CC1101 sub-GHz radio, the
 4-mic PDM array, four I2C sensors (OPT4001 light, SHT40 humidity/temp,
 BMI323 IMU, BMM350 magnetometer), IR receive/decode/encode/transmit (with a
 Flipper-`.ir` parser/writer), and a polled native-USB host MSC stack
-(thumb drives, no TinyUSB) with FatFs. **Implemented upstream in the
+(thumb drives, no TinyUSB) with FatFs. Apps also reach the rest of the
+board through `libs/onewili`: the main CPU's OneWili command API over the
+display link, the SD card the main CPU owns, and **peer streams to the
+ESP32-C5 (Bottlenose)**, so a display app and an ESP32 app can run as the two
+halves of one program (see "Two CPUs" below). **Implemented upstream in the
 default FreeWili 2 firmware** (not yet harvested into this BSP): the LoRa
-(WIO-E5) bridge and NFC (ST25R3916B), plus the MAIN-side ESP32-C5
-(Bottlenose) link and the CM0 Linux module. Still `TODO` in this BSP (not yet harvested): NFC, LoRa, and Pico-PIO-USB. See
+(WIO-E5) bridge and NFC (ST25R3916B), plus the CM0 Linux module. Still
+`TODO` in this BSP (not yet harvested): NFC, LoRa, and Pico-PIO-USB. See
 [`docs/hardware/catalog.md`](./docs/hardware/catalog.md) for the full
 peripheral → driver → provenance table, and `docs/drivers/` for per-driver
 usage docs. Each driver ships with an `apps/hello_*` on-hardware smoke
@@ -98,12 +102,76 @@ recommended convention.
 
 **Status:** every harvested driver group has passed its `hello_*` smoke
 test on a physical board (most recently `hello_ir`'s TX→RX loopback and
-`hello_usbdrive`'s thumb-drive mount, 2026-07-06). The host test tree is at
-26 green binaries. `docs/hardware/facts.md` records the hard-won invariants
+`hello_usbdrive`'s thumb-drive mount, 2026-07-06), and the two-CPU demo
+`apps/dualcpu` has run against its ESP32 half over peer streams
+(2026-09-28). The host test tree is at 26 green binaries. `docs/hardware/facts.md` records the hard-won invariants
 — shared SPI1 arbitration, shared DMA_IRQ_0 ownership, pio2 cohabitation
 (radio GDO capture + IR, radio inits first), the power-gated rails on the
 PCAL6524 I/O expander — and keeps claims scoped to what a bench session
 actually demonstrated.
+
+## Two CPUs: a display app and an ESP32 app
+
+Everything this repo builds runs on the **display CPU**, the RP2350B. The
+FreeWili 2 has two more processors an app can work with, and both are reached
+through the **main CPU**, which runs the stock firmware and routes between
+its clients:
+
+| CPU | What runs there | How a wilibsp app reaches it |
+|---|---|---|
+| MAIN (RP2350) | the stock FreeWili 2 firmware: the OneWili menu, power sequencing, the SD card, every link | generated OneWili calls over the display link (`libs/onewili/wilibsp`) |
+| DISPLAY (RP2350B) | **your wilibsp app**, started with `fw ramrun` or installed under `/apps/` | the Pico SDK and `bsp/` directly |
+| ESP32-C5 (Bottlenose) | the firmware's Wi-Fi/Bluetooth image, optionally carrying an **ESP32 BSP app** | OneWili **peer streams** routed by MAIN, and nothing else |
+
+**Peer streams** (`onewili_stream.h` in `libs/onewili/wilibsp`) carry
+best-effort datagrams of 1-128 bytes between MAIN's clients: this display
+CPU, the ESP32, the CM0 and the PC host. `ow_stream_write()` never waits for
+the destination, `ow_stream_poll()` never blocks, and everything lost anywhere
+along the way is counted by `ow_stream_drops()`. The ESP32 side has the same
+API with the same meaning, so the two halves of an app share nothing but the
+datagram format they agree on. Measured on hardware: about 6 ms display to
+ESP32 and back, no loss at one ping per second, and a 768-byte credit window
+that refuses a burst rather than queueing it.
+
+```c
+#include "onewili_stream.h"
+
+ow_stream_write(&dev, OW_PEER_ESP32, msg, len);      /* OW_OK once it has left */
+
+uint8_t buf[OW_STREAM_MTU]; ow_peer from; int n;
+while ((n = ow_stream_poll(&dev, &from, buf, sizeof buf)) > 0) { /* one datagram */ }
+```
+
+What a display app must do to talk to the ESP32:
+
+- **Keep the ESP32 powered.** It sits on power zone 5, which has no
+  `POWER_ZONES` name, so request it in code before opening the link:
+  `picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_WIFI_BT))`. Declare
+  `RGB_LEDS` (zone 10) as well if the ESP32's LED is used.
+- **Set MAIN's ESP32 Mode to OneWili API** once per launch, with
+  `ow_wireless_e_sp32_mode(&dev, 1)`. In Default mode MAIN drops the
+  ESP32's OneWili traffic and the stream link goes stale within 3 s.
+- **Poll on every loop pass.** `ow_stream_poll()` drains the 2 KB receive
+  FIFO and sends the keepalive; after 3 s of silence MAIN stops routing
+  datagrams to this CPU.
+- **Expect the first write to be refused** until MAIN has confirmed the link
+  (one round trip), and read `ow_stream_drops()` instead of assuming delivery.
+
+The ESP32 half is **not built by this repo**. It is a menuconfig choice
+("BSP app on the ESP32") inside the FreeWili 2 ESP32 firmware project, built
+with ESP-IDF against an `sdkconfig.bsp-*` overlay and flashed over the
+ESP32-C5's own USB Serial/JTAG port with esptool. MAIN must run a firmware
+build that carries peer streams. There is no single build target that
+produces both halves yet.
+
+`apps/dualcpu` is the worked example. Its ESP32 half sends telemetry once a
+second (uptime, chip temperature, heaps, the strongest Wi-Fi access points)
+and answers PINGs; the display half shows the telemetry, times the round trip,
+and drives the ESP32's RGB LED and Wi-Fi scan from the front-panel buttons.
+The hardware records are
+[`docs/superpowers/findings/2026-09-27-dualcpu-peer-streams-e2e.md`](./docs/superpowers/findings/2026-09-27-dualcpu-peer-streams-e2e.md)
+and
+[`2026-09-28-dualcpu-renumbered-ids-rerun.md`](./docs/superpowers/findings/2026-09-28-dualcpu-renumbered-ids-rerun.md).
 
 ## Repo map
 
@@ -137,12 +205,16 @@ wilibsp/
     hello_sdcard/             SD card read/write over OneWili (main CPU owns the card)
     canblast/                 CAN FD blaster: high-rate TX/RX through the OneWili display link
     dualcpu/                  DISPLAY half of a DISPLAY + ESP32 app over OneWili peer streams
+  libs/
+    onewili/                  git submodule: the OneWili API (main-CPU commands, SD card,
+                               peer streams); the display-CPU C package is libs/onewili/wilibsp
   tools/                      fw CLI (fw.py) + POSIX/Windows launchers + its own pytest
   tests/                      standalone host CTest tree (no Pico SDK, no hardware)
   docs/
     hardware/                 pinmap.md, facts.md, catalog.md
     drivers/                  per-driver usage docs (platform ... ir, usbhost, lora)
     superpowers/plans/        the full implementation plan / spec
+    superpowers/findings/     what was actually run on the board, and what came back
   skills/
     freewili2-new-app/        Claude Code skill: scaffold a new app
     freewili2-add-driver/     Claude Code skill: harvest a new driver
@@ -161,6 +233,9 @@ wilibsp/
   and the LED-count discrepancy record.
 - [`docs/hardware/catalog.md`](./docs/hardware/catalog.md) — peripheral →
   driver status → harvest source (incl. the "Implemented upstream" table).
+- [`libs/onewili/wilibsp/README.md`](./libs/onewili/wilibsp/README.md) —
+  OneWili from a display app: main-CPU commands, the SD card, fast CAN
+  transmit, and peer streams to the ESP32.
 - [`docs/drivers/lora.md`](./docs/drivers/lora.md) — WIO-E5 LoRa bridge:
   implemented in the default firmware, documented for the future harvest.
 - [`docs/app-storage.md`](./docs/app-storage.md) — `/apps/` installation and
