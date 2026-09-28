@@ -44,7 +44,7 @@ radio, I2C sensors, DVI, and the agentio harness. The per-increment records
 live in `docs/superpowers/findings/`, summarized in
 `docs/hardware/facts.md` ("Hardware verification status") and tracked per
 peripheral in `docs/hardware/catalog.md`. Anything still marked TODO in the
-catalog (NFC, buttons, PIO-USB) is unverified because its driver has not been
+catalog (NFC, PIO-USB) is unverified because its driver has not been
 harvested yet.
 
 **Do not assume a doc's description of behavior is a confirmed result.** Where
@@ -399,6 +399,39 @@ Good clarifying questions: *"Do you mean the external GPIO on the header
 the header, *"which VIO rail — 3.3 V, 5 V, or whatever the external Trig_IN/VREF
 pin supplies?"* Only skip the question when the request already names one
 unambiguously (e.g. it cites a `PIN_*` define, or says "over OneWili").
+
+## The five front-panel buttons — label each one directly above it
+
+Five physical buttons sit in a row along the bottom edge of the LCD, equally
+spaced, left to right: **grey, yellow, green, blue, red**. Apps read them as
+`UARTKBD_BTN_GREY` … `UARTKBD_BTN_RED` (`bsp/input/uartkbd_parse.h`, values
+0-4 in that left-to-right order; `fw2kb` calls them `FW2KB_BTN_GRAY` …
+`FW2KB_BTN_RED`), and `fw press grey|yellow|green|blue|red` injects them. The
+nav pad, OK, CANCEL, PAGE and HOME are not part of this row.
+
+An on-screen label for one of these buttons must sit directly above it, so the
+user can see which button does what:
+
+- **Geometry:** five boxes along the bottom of the 480×320 screen; box *i*
+  (0 = grey) at `x = i * 96`, width `(ST7796_W - 12) / 5` = 93, so 3 px gaps.
+  That is the stock firmware's own menu bar. The height is the app's choice.
+- **Keep the physical order and the fixed fifths.** Never size boxes to their
+  labels, reorder them to suit the text, or add a sixth box to the row. An
+  action with no coloured button (one bound to OK, say) gets its touch target
+  somewhere else on the screen.
+- **Colour:** fill each box with its button's colour and write what the button
+  does. In the wire order `st7796_fill_rect()` takes: grey `0x9AD6`, yellow
+  `0x06FF`, green `0x0012`, blue `0xF800`, red `0x0780`. The stock bar writes
+  white on all five; black reads better on the light grey and yellow boxes,
+  which is what `apps/dualcpu` does.
+- **Touch:** if the labels are also touch targets, hit-test the same
+  rectangles, so touching a label and pressing the button under it do the same
+  thing.
+
+`apps/dualcpu` is the example whose labels are also touch targets;
+`apps/hello_keyboard` and `apps/retrochat` draw the same bar, display-only, for
+the chord keyboard. `apps/canblast` predates this rule: it still names its
+buttons in one text line along the bottom and should be moved to the bar.
 
 ## How to add a driver
 
