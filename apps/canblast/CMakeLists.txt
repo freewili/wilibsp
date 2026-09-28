@@ -6,6 +6,6 @@ if(CANBLAST_POWER_BASELINE)
     target_compile_definitions(canblast PRIVATE CANBLAST_POWER_BASELINE=1)
 endif()
 fw2_display_app(canblast
-    VERSION 001
+    VERSION 002
     DESCRIPTION "CAN FD blaster: high-rate transmit and receive through the OneWili display link"
     REPOSITORY "https://github.com/freewili/wilibsp")

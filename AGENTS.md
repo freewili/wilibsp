@@ -418,7 +418,8 @@ user can see which button does what:
 - **Keep the physical order and the fixed fifths.** Never size boxes to their
   labels, reorder them to suit the text, or add a sixth box to the row. An
   action with no coloured button (one bound to OK, say) gets its touch target
-  somewhere else on the screen.
+  somewhere else on the screen. A button that does nothing in the app gets no
+  box; leave its slot empty rather than moving the others.
 - **Colour:** fill each box with its button's colour and write what the button
   does. In the wire order `st7796_fill_rect()` takes: grey `0x9AD6`, yellow
   `0x06FF`, green `0x0012`, blue `0xF800`, red `0x0780`. The stock bar writes
@@ -429,9 +430,9 @@ user can see which button does what:
   thing.
 
 `apps/dualcpu` is the example whose labels are also touch targets;
+`apps/canblast` labels four buttons and leaves grey's slot empty;
 `apps/hello_keyboard` and `apps/retrochat` draw the same bar, display-only, for
-the chord keyboard. `apps/canblast` predates this rule: it still names its
-buttons in one text line along the bottom and should be moved to the bar.
+the chord keyboard.
 
 ## How to add a driver
 
