@@ -17,6 +17,23 @@ sleep 3500
 halt
 rp2350.cm0 cortex_m smp off
 rp2350.cm1 cortex_m smp off
+# Only take over core 0 in Thread mode. Rewriting PC does not leave an
+# exception: a halt that lands in one of the stock firmware's interrupt
+# handlers would start the app *inside* that handler, with its NVIC active bit
+# still set, so no interrupt of equal or lower priority can ever preempt it.
+# The app then hangs at its first interrupt-driven wait -- board_init's
+# sleep_us() in ws2812_clear_once(), seen as a silent stop after "board: leds"
+# with TIMER0_IRQ_3 pending and IPSR = 27 (DMA_IRQ_1).
+targets rp2350.cm0
+for {set i 0} {$i < 100} {incr i} {
+    if {([lindex [get_reg xpsr] 1] & 0x1ff) == 0} break
+    resume
+    sleep 1
+    halt
+}
+if {([lindex [get_reg xpsr] 1] & 0x1ff) != 0} {
+    echo "ramrun: core 0 did not halt in Thread mode; the app may hang at its first interrupt wait"
+}
 targets rp2350.cm1
 halt
 mww 0xE000E180 0xFFFFFFFF
@@ -53,6 +70,10 @@ set vt [read_memory 0x20000000 32 2]
 echo [format "ramrun: sp=0x%08x pc=0x%08x" [lindex $vt 0] [lindex $vt 1]]
 reg sp [lindex $vt 0]
 reg pc [lindex $vt 1]
+# A reset handler assumes reset state: interrupts unmasked. The stock
+# firmware may have been halted inside a critical section.
+reg primask 0
+reg basepri 0
 resume
 # TIMER0 pauses while EITHER core sits in debug halt (DBGPAUSE, reset value
 # 0x7), which freezes every sleep/alarm in the app if a later probe session

@@ -136,6 +136,7 @@ wilibsp/
     hello_usbdrive/           thumb-drive mount + root listing
     hello_sdcard/             SD card read/write over OneWili (main CPU owns the card)
     canblast/                 CAN FD blaster: high-rate TX/RX through the OneWili display link
+    dualcpu/                  DISPLAY half of a DISPLAY + ESP32 app over OneWili peer streams
   tools/                      fw CLI (fw.py) + POSIX/Windows launchers + its own pytest
   tests/                      standalone host CTest tree (no Pico SDK, no hardware)
   docs/

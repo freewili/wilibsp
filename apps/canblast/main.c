@@ -10,9 +10,10 @@
  *   TX  pipelined one-shot write_canfd commands (onewili_fast.h): several
  *       commands in flight instead of one synchronous round trip per frame.
  *
- * Buttons: GREEN start/stop a transmit flood, BLUE cycle the flood payload
- * length, RED reset the counters, YELLOW cycle the RX stream mode
- * (binary / text / both). HOLD HOME 5 s leaves the app.
+ * Buttons, each labelled directly above it along the bottom: YELLOW cycle the
+ * RX stream mode (binary / text / both), GREEN start/stop a transmit flood,
+ * BLUE cycle the flood payload length, RED reset the counters. Grey is unused
+ * and left unlabelled. HOLD HOME 5 s leaves the app.
  *
  * Bench control rides SEGGER RTT channel 0 (the DIAG channel): the PC sends
  * one-line commands on the down buffer (ID, RESET, STREAM n, RX run count arb,
@@ -41,7 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define APP_VERSION_STR "001"
+#define APP_VERSION_STR "002"
 #define CAN_CHANNEL     0
 #define ARB_RX_DEFAULT  0x123u      /* ValueCAN -> FreeWili (matches canfdval Sides.arb_v2w) */
 #define ARB_TX_DEFAULT  0x321u      /* FreeWili -> ValueCAN (matches canfdval Sides.arb_w2v) */
@@ -55,6 +56,12 @@ static inline uint16_t be16(uint16_t c) { return (uint16_t)((c >> 8) | (c << 8))
 #define C_YEL   be16(0xFFE0)
 #define C_CYAN  be16(0x07FF)
 #define C_GREY  be16(0x8410)
+/* The front-panel buttons' colours (AGENTS.md, "The five front-panel
+ * buttons"); grey is unused here. */
+#define C_KEY_YELLOW be16(0xFF06)
+#define C_KEY_GREEN  be16(0x1200)
+#define C_KEY_BLUE   be16(0x00F8)
+#define C_KEY_RED    be16(0x8007)
 
 /* ~37 KB of link buffers plus the parser: far too big for the stack. */
 static ow_device        dev;
@@ -530,11 +537,29 @@ static void line_at(int idx, int y, int scale, uint16_t fg, const char* text) {
     st7796_draw_text(0, y, scale, fg, C_BLACK, padded);
 }
 
+/* One box directly above each front-panel button: they are equally spaced
+ * along the bottom edge, so the boxes are fixed fifths of the width. Grey
+ * does nothing here and gets no box. */
+#define KEY_W     ((480 - 12) / 5)   /* 93 */
+#define KEY_PITCH (KEY_W + 3)        /* 96 */
+#define KEY_Y     276
+#define KEY_H     40
+
+static void key_label(int slot, uint16_t bg, uint16_t fg, const char* label) {
+    int x = slot * KEY_PITCH;
+    st7796_fill_rect(x, KEY_Y, KEY_W, KEY_H, bg);
+    st7796_draw_text(x + (KEY_W - (int)strlen(label) * 12) / 2, KEY_Y + (KEY_H - 16) / 2, 2, fg, bg, label);
+}
+
 static void screen_static(void) {
     memset(shown, 0, sizeof shown);
     st7796_fill_screen(C_BLACK);
     line_at(0, 4, 2, C_WHITE, "CAN BLAST  onewili display link");
-    line_at(9, 296, 1, C_GREY, "GREEN flood  BLUE len  RED reset  YELLOW stream   HOLD HOME 5S TO EXIT");
+    line_at(9, 256, 1, C_GREY, "HOLD HOME 5S TO EXIT");
+    key_label(1, C_KEY_YELLOW, C_BLACK, "STREAM");
+    key_label(2, C_KEY_GREEN, C_WHITE, "FLOOD");
+    key_label(3, C_KEY_BLUE, C_WHITE, "LEN");
+    key_label(4, C_KEY_RED, C_WHITE, "RESET");
 }
 
 static void screen_update(void) {
