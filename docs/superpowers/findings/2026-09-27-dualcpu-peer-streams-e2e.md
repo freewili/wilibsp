@@ -11,8 +11,8 @@
   `h\a\w/p/c` had stable ids 614-617. The work has since been committed as
   firmware branch `feat/esp32-onewili-streams`, rebased onto
   `release/v08-preview.3`, where ISO-TP holds 614-623 and these commands
-  are 624-627. The DISPLAY app calls them by text path and is unaffected,
-  but the results below were not rerun on the rebased images.
+  are 624-627. The DISPLAY app calls them by text path and is unaffected.
+  The rerun on the rebased images is `2026-09-28-dualcpu-renumbered-ids-rerun.md`.
 - DISPLAY: `apps/dualcpu` v001, started with `fw ramrun dualcpu`.
 - ESP32-C5: the Bottlenose firmware built with the DUALCPU BSP app (the ESP32
   half of this demo; overlay `freewilibottlenose/sdkconfig.bsp-dualcpu` on the

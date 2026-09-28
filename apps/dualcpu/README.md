@@ -146,4 +146,5 @@ images rebuilt with the final review fixes. Record and screenshot:
 That run used the pre-release development tree, where the ESP32 Mode and
 stream commands had ids 614-617. On `feat/esp32-onewili-streams` they were
 renumbered to 624-627 after ISO-TP (614-623); the code is otherwise the
-same, but the rebased images have not been rerun on hardware yet.
+same. Rerun on the rebased images on 2026-09-28 with the same results:
+`docs/superpowers/findings/2026-09-28-dualcpu-renumbered-ids-rerun.md`.
