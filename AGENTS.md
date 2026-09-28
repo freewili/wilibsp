@@ -14,7 +14,12 @@ built on. Read it before making changes.
 ## What this is
 
 `wilibsp` is a board-support **monorepo** for the **FreeWili 2** (Raspberry Pi
-**RP2350B**, 48 GPIO, 16 MB flash, 8 MB PSRAM). Importantly, today it covers the display processor only. (This means you must use OpenOCD interface 0 — FreeWili 2 exposes multiple debug interfaces.) It provides:
+**RP2350B**, 48 GPIO, 16 MB flash, 8 MB PSRAM). Everything it builds runs on
+the **display processor**. (This means you must use OpenOCD interface 0 —
+FreeWili 2 exposes multiple debug interfaces.) A display app can now pair
+with an app on the **ESP32-C5** through OneWili peer streams, but that half is
+built by the ESP32 firmware project, not here — see "The ESP32-C5 and peer
+streams" below. It provides:
 
 - `bsp/` — the shared `freewili2_bsp` CMake **STATIC library**: platform
   bring-up, display, touch, and LED drivers, harvested and normalized from the
@@ -26,10 +31,12 @@ built on. Read it before making changes.
   Today: `libs/onewili` — the generated OneWili C command API for driving the
   **main CPU** (GPIO, LEDs, radio, …) over the FwGUI display link (UART0,
   8 Mbaud), plus `ow_sd_*` for reading and writing the **SD card** the main
-  CPU owns (SDFS over the same link). The submodule ships every OneWili
-  language package; the display-CPU C package is `libs/onewili/wilibsp`
-  (see its `README.md`);
-  `apps/toggleled` and `apps/hello_sdcard` are the worked examples.
+  CPU owns (SDFS over the same link), and `ow_stream_*` **peer streams**
+  to the ESP32-C5, the CM0 and the PC host, routed by the main CPU. The
+  submodule ships every OneWili language package; the display-CPU C package
+  is `libs/onewili/wilibsp` (see its `README.md`);
+  `apps/toggleled`, `apps/hello_sdcard` and `apps/dualcpu` are the worked
+  examples.
 - `tools/fw.py` (+ `tools/fw` / `tools/fw.cmd` launchers) — a cross-platform
   CLI that drives CMake + OpenOCD identically on Windows and Linux.
 - `tests/` — a standalone host CTest tree for pure logic (no Pico SDK, no
@@ -295,7 +302,9 @@ build if the record is missing, duplicated, or wrong.
 Three things a reader needs to know about it:
 
 - **Every FW2 app contains exactly one record.** This BSP targets the DISPLAY
-  CPU; FW2 RAM apps do not embed a second processor's image.
+  CPU; FW2 RAM apps do not embed a second processor's image. An app with an
+  ESP32 half ships that half as a separate image for the ESP32 firmware
+  project (see "The ESP32-C5 and peer streams"); the UF2 stays DISPLAY-only.
 - **Build identity is optional.** The current examples leave `build` and
   `build_ts` empty; consumers must accept that representation.
 - **Nothing in the firmware references the record**, so it is held by
@@ -400,6 +409,12 @@ the header, *"which VIO rail — 3.3 V, 5 V, or whatever the external Trig_IN/VR
 pin supplies?"* Only skip the question when the request already names one
 unambiguously (e.g. it cites a `PIN_*` define, or says "over OneWili").
 
+There is a third set nobody here can drive: the **ESP32-C5's own pins**. No
+OneWili command reaches them. If an app needs the ESP32 to do something with
+its GPIO, Wi-Fi or LED, the ESP32 half of the app does it and the display
+half asks over a peer stream, in a message format the two halves define
+(`apps/dualcpu`'s `SET_LED` and `SCAN_NOW` are the pattern).
+
 ## The five front-panel buttons — label each one directly above it
 
 Five physical buttons sit in a row along the bottom edge of the LCD, equally
@@ -433,6 +448,104 @@ user can see which button does what:
 `apps/canblast` labels four buttons and leaves grey's slot empty;
 `apps/hello_keyboard` and `apps/retrochat` draw the same bar, display-only, for
 the chord keyboard.
+
+## The ESP32-C5 and peer streams
+
+The FreeWili 2 has four processors an app may care about. MAIN (RP2350) runs
+the stock firmware and owns the OneWili menu, the power sequencer, the SD card
+and every link. DISPLAY (RP2350B) runs the wilibsp app. The ESP32-C5
+(Bottlenose) runs the firmware's Wi-Fi/Bluetooth image, which can carry a
+**BSP app** of its own. The CM0 Linux module and the PC host are the other two
+OneWili clients. A wilibsp app builds for DISPLAY only; it reaches MAIN with
+generated commands and the ESP32 with **peer streams**, and nothing else.
+
+**Peer streams** (`onewili_stream.h`, `libs/onewili/wilibsp`; wire contract in
+`ow_stream_wire.h`) are best-effort datagrams of 1-`OW_STREAM_MTU` (128) bytes
+between MAIN's clients (`OW_PEER_DISPLAY`, `OW_PEER_ESP32`, `OW_PEER_CM0`,
+`OW_PEER_HOST`; `OW_PEER_MAIN` is reserved and dropped). `ow_open_fwgui()`
+binds them to the display link, so a datagram is one link frame and never a
+command round trip. The same API with the same semantics runs on the ESP32
+(over its own link to MAIN) and on the PC and CM0 (over three text commands),
+so a message format agreed between two halves works unchanged from any of
+them. Delivered whole or not at all; no ordering across senders, no retry, no
+acknowledgement. Layer reliability on top if you need it.
+
+Rules for a display app that talks to the ESP32. Each one cost bench time:
+
+1. **The ESP32 is power zone 5 and you must hold it up yourself.** Under the
+   stock DISPLAY firmware MAIN's own demand keeps the rail on; a BSP app
+   discards that demand, so nothing re-asserts it after a sleep, USB attach or
+   watchdog. Zone 5 has no `POWER_ZONES` name: call
+   `picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_WIFI_BT))` before
+   `picpwr_release_unused()` and before opening the link. The ESP32's RGB LED
+   is on zone 10, so declare `RGB_LEDS` too if the ESP32 half drives it.
+   Whether the stock DISPLAY firmware raises zone 5 from MAIN's ESP32 Mode
+   demand alone is unconfirmed (two bench sessions disagreed); an app that
+   requests the rail itself does not depend on it.
+2. **Set MAIN's ESP32 Mode to OneWili API**, once per launch:
+   `ow_wireless_e_sp32_mode(&dev, 1)`. MAIN answers the ESP32's OneWili
+   traffic only in that mode. In Default mode datagrams to and from the ESP32
+   are dropped and counted at MAIN, and the link reads stale within 3 s. The
+   setting is saved on MAIN and survives reboots, but set it anyway; it is
+   also a cheap first command that proves MAIN is listening.
+3. **Call `ow_stream_poll()` on every loop pass**, even if you only send. It
+   drains the 2 KB receive FIFO (each datagram costs its size plus 2 bytes)
+   and sends the once-a-second keepalive; after 3 s of silence MAIN closes
+   the link and drops everything addressed to this CPU. A synchronous OneWili
+   call that blocks longer than that (a long `ow_sd_*` transfer, a stalled
+   command) has the same effect. Use the `fw2_app_recovery_*` wrappers as for
+   any app.
+4. **Writes are refused, never queued.** `ow_stream_write()` returns
+   `OW_ERR_BUFFER` until MAIN's first CREDIT arrives (one round trip after
+   open) and whenever the write would put more than `OW_STREAM_WINDOW` (768)
+   bytes in flight, counting each datagram as its size plus 10 bytes of
+   framing: about 5 full-size or 40 nine-byte datagrams. A refused write is
+   counted in `ow_stream_drops()`. Resend from your own state; do not spin on
+   a refusal.
+5. **Nothing waits for the destination, so count.** `ow_stream_drops()` is
+   the sum of everything lost anywhere: refused here, lost on the link,
+   dropped at MAIN in either direction, or dropped here for lack of room. A
+   silent loss shows up only there and in your own sequence numbers.
+   `ow_fwgui_get_stats()` has the `stream_*` link counters.
+6. **One task per device.** Push links are single-threaded: call
+   `ow_stream_*` for a device from one core and do not interleave them with
+   other `ow_*` calls from another.
+7. **A MAIN reboot restarts DISPLAY into its stock firmware**, so a
+   `fw ramrun` app is gone after any MAIN restart; relaunch it. The ESP32 half
+   keeps running and both halves reconnect on their own, including after the
+   ESP32 is reset into its ROM loader by the `w\a` flasher queries.
+
+**Building and flashing the ESP32 half.** The ESP32 half is not a wilibsp
+target. It is a menuconfig choice in the FreeWili 2 ESP32 firmware project,
+"BSP app on the ESP32" (none by default; the OneWili demo, which exercises the
+text, binary-event and stream channels; and the dual-CPU app's ESP32 half),
+selected by an `sdkconfig.bsp-*` overlay, built with ESP-IDF in a build
+directory of its own and flashed over the ESP32-C5's own USB Serial/JTAG port
+with esptool. Its log is that same console. MAIN must run a firmware build
+that carries peer streams; older MAIN firmware answers nothing on the stream
+path and the link never confirms. The generated `ow_wireless_esp32_flasher_*`
+bindings (`w\a`) can reflash the ESP32 from a folder on the SD card through
+MAIN; that route has been driven from a PC, not yet from a display app.
+
+**Worked example: `apps/dualcpu`.** ESP32 to DISPLAY: TELEMETRY about once a
+second (uptime, chip temperature, heaps, stream drops, event counts, LED state,
+the strongest Wi-Fi access points) and PONG. DISPLAY to ESP32: PING, SET_LED
+(off, solid, rainbow) and SCAN_NOW. Every datagram starts with a type byte,
+fields are little-endian, unknown types are ignored and short ones counted as
+malformed. The display half labels the five buttons for the LED, times each
+round trip, and takes bench commands over the RTT down buffer (`stats`,
+`ping`, `burst <n>`, `led`, `scan`, `espmode`). Verified on hardware
+2026-09-27 and again 2026-09-28 on the released command ids: 80/80 PINGs at
+about 6 ms, bursts of 150 accept exactly 40, ESP32 Mode gate and ROM-loader
+resets recovered, PC-to-DISPLAY and PC-to-ESP32 text-route echoes clean
+(`docs/superpowers/findings/2026-09-27-dualcpu-peer-streams-e2e.md`,
+`2026-09-28-dualcpu-renumbered-ids-rerun.md`). Not exercised there: the
+ESP32's GPIO-report and text-event mirrors, and the green button under load
+in `canblast`.
+
+**Not there yet:** one build target that produces both halves; text or
+binary events pushed to the CM0; anything that lets a display app run code on
+the ESP32 without an ESP32 app already flashed there.
 
 ## How to add a driver
 
@@ -522,6 +635,11 @@ port 9091 within 10s` because the previous OpenOCD has not released the probe.
 Leave a couple of seconds between them, or keep a `fw rtt` running — it holds
 the probe once and every one-shot verb reuses it.
 
+**Gotcha:** the agentio verbs see only the DISPLAY. An ESP32 half logs to the
+ESP32-C5's USB Serial/JTAG console, and a `fw screenshot` during high-rate
+stream traffic stalls the app long enough to lose the keepalive; read the
+counters over RTT instead while a link is busy.
+
 ## Where things live
 
 - **Pin map**: `docs/hardware/pinmap.md` (generated from and cross-checked
@@ -534,10 +652,14 @@ the probe once and every one-shot verb reuses it.
   what was actually run on the board and what came back. Check here before
   claiming any behavior is confirmed.
 - **Main-CPU control (OneWili over the FwGUI link)**: `libs/onewili/wilibsp/README.md`.
+- **The ESP32-C5 from a display app**: peer streams — the "Peer streams"
+  section of `libs/onewili/wilibsp/README.md`, `onewili_stream.h` and
+  `ow_stream_wire.h` beside it, "The ESP32-C5 and peer streams" above,
+  `apps/dualcpu`, and the two dualcpu findings files.
 - **Related default-firmware subsystems** (implemented upstream in the default
   FreeWili 2 firmware, not in this BSP): LoRa WIO-E5 bridge
-  (`docs/drivers/lora.md`), NFC ST25R3916B, ESP32-C5 Bottlenose
-  (MAIN-side), CM0 Linux bridge, and the automatic power-zone manager
+  (`docs/drivers/lora.md`), NFC ST25R3916B, the MAIN-side ESP32-C5 link and
+  its `w\a` flasher, CM0 Linux bridge, and the automatic power-zone manager
   (`docs/drivers/power.md`).
   That covers the SD card too — the display CPU has no direct card path, so
   `ow_sd_*` is the only route (`apps/hello_sdcard`).
@@ -611,6 +733,10 @@ a new kind of private breadcrumb is discovered.
   casting `PSRAM_BASE` (invariant 2) — the linker's PSRAM region starts at
   that same address, so a raw pointer silently aliases whatever the linker
   placed there.
+- **Talking to the ESP32?** Hold zone 5 up yourself
+  (`PICPWR_ZONE_WIFI_BT`), set ESP32 Mode to OneWili API, call
+  `ow_stream_poll()` every loop pass, and treat a refused write as normal.
+  See "The ESP32-C5 and peer streams".
 - **Don't report a driver as working because it builds.** Flash it and check
   it with `fw screenshot` / `fw rtt`, and record the result in
   `docs/superpowers/findings/`. If no probe is attached, say the work is

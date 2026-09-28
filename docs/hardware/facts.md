@@ -350,7 +350,13 @@ subsystem set that this BSP tracks as TODO or out-of-scope: the LoRa
 (WIO-E5) bridge, NFC (ST25R3916B), the ESP32-C5 Bottlenose link, the CM0
 Linux module, and the automatic power-zone manager. Where a peripheral is
 implemented upstream, the default firmware is the authoritative reference — see
-`docs/hardware/catalog.md` "Implemented upstream".
+`docs/hardware/catalog.md` "Implemented upstream". The ESP32-C5 is the one a
+display app can now talk to: OneWili peer streams routed by the main CPU,
+verified on hardware with `apps/dualcpu` on 2026-09-27 and 2026-09-28
+(`docs/superpowers/findings/2026-09-27-dualcpu-peer-streams-e2e.md`,
+`2026-09-28-dualcpu-renumbered-ids-rerun.md`): about 6 ms round trip, no
+loss at 1 PING/s, a 768-byte credit window, and the ESP32 held up by the app
+on power zone 5.
 PDM mics are now DONE (see "PDM microphones" below). The four I2C sensors
 (OPT4001, SHT40, BMI323, BMM350) are also now DONE (see "I2C sensors"
 below) — hardware-verified 2026-07-04 via `apps/hello_sensors` (4/4 chip-ids,
