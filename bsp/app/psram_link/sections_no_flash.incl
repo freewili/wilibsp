@@ -8,6 +8,13 @@ SECTIONS
         __sram_boot_start__ = .;
         KEEP(*(.sram_bootstrap .sram_bootstrap.*))
         *libfreewili2_bsp.a:*(.text* .rodata* .srodata*)
+        /* board_init_psram() raises clk_sys and then calls clock_configure()
+         * and psram_configure_params() before psram_reinitialize() re-times
+         * the QMI.  Both divide 64-bit values, which branches through a
+         * veneer into __aeabi_uldivmod.  Without libgcc here that helper is
+         * PSRAM-resident and is fetched through the window being
+         * reconfigured. */
+        *libgcc.a:*(.text* .rodata* .srodata*)
         *platform.c.obj(.text* .rodata* .srodata*)
         *common.c.obj(.text* .rodata* .srodata*)
         *panic.c.obj(.text* .rodata* .srodata*)
