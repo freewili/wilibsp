@@ -5,5 +5,5 @@ target_link_libraries(dualcpu freewili2_bsp onewili_fwgui)
 # name and is requested in main.c.
 fw2_display_app(dualcpu
     POWER_ZONES DISPLAY RGB_LEDS
-    VERSION 001
+    VERSION 002
     DESCRIPTION "Dual-CPU demo: DISPLAY and ESP32 apps exchange ping, telemetry and LED control over OneWili peer streams")

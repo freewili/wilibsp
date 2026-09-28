@@ -39,17 +39,20 @@ Datagrams from any peer other than the ESP32 are counted and ignored.
 
 ## Screen and controls
 
-A title bar, the ESP32's telemetry and access-point list on the left, link,
-round-trip and stream counters on the right, and a row of touch buttons:
-**RED**, **GREEN**, **BLUE**, **RAINBOW**, **OFF** and **SCAN**. The layout is
-drawn once; after that only fields whose text changed are redrawn.
+A title bar with a **SCAN** touch button, the ESP32's telemetry and
+access-point list on the left, link, round-trip and stream counters on the
+right, and along the bottom one label directly above each of the five
+front-panel buttons, in that button's colour: **OFF** (grey), **RAINBOW**
+(yellow), **GREEN**, **BLUE** and **RED**. Press the button or touch its label.
+The layout is drawn once; after that only fields whose text changed are
+redrawn.
 
 | Key | Action |
 | --- | --- |
-| red, green, blue | LED solid in that colour |
-| yellow | LED rainbow |
 | grey | LED off |
-| OK or nav centre | Wi-Fi scan |
+| yellow | LED rainbow |
+| green, blue, red | LED solid in that colour |
+| OK or nav centre (or touch SCAN) | Wi-Fi scan |
 | HOME held 5 s | leave the app |
 | PAGE held 5 s | About |
 
@@ -148,3 +151,7 @@ stream commands had ids 614-617. On `feat/esp32-onewili-streams` they were
 renumbered to 624-627 after ISO-TP (614-623); the code is otherwise the
 same. Rerun on the rebased images on 2026-09-28 with the same results:
 `docs/superpowers/findings/2026-09-28-dualcpu-renumbered-ids-rerun.md`.
+
+v002 puts each front-panel label directly above its button and moves SCAN to
+the title bar; every button press and label touch was checked on hardware on
+2026-09-28: `docs/superpowers/findings/2026-09-28-dualcpu-v002-button-row.md`.

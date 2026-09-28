@@ -21,9 +21,11 @@
  *                     0x05 SCAN_NOW   results ride the next TELEMETRY
  * Unknown types are ignored; short or inconsistent ones count as malformed.
  *
- * Touch RED GREEN BLUE RAINBOW OFF SCAN along the bottom, or press red /
- * green / blue (solid colour), yellow (rainbow), grey (off), OK or the nav
- * centre (scan). HOLD HOME 5 s leaves the app; HOLD PAGE 5 s shows About.
+ * The bottom row labels the five front-panel buttons, each label directly
+ * above its button: grey OFF, yellow RAINBOW, green GREEN, blue BLUE, red RED
+ * (solid LED colours). Press the button or touch its label. SCAN, top right,
+ * or OK or the nav centre starts a Wi-Fi scan. HOLD HOME 5 s leaves the app;
+ * HOLD PAGE 5 s shows About.
  *
  * Bench control rides SEGGER RTT channel 0 (the DIAG channel): a "stats:"
  * line every 2 s with every counter as key=value, and one-line commands on
@@ -50,7 +52,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define APP_VERSION_STR "001"
+#define APP_VERSION_STR "002"
 
 /* Message types and SET_LED modes: the protocol above. */
 #define DC_TELEMETRY    0x01
@@ -89,12 +91,17 @@
 #define C_DGREY  BE(0x4208)
 #define C_RED    BE(0xF800)
 #define C_GREEN  BE(0x07E0)
-#define C_BLUE   BE(0x001F)
 #define C_YEL    BE(0xFFE0)
 #define C_CYAN   BE(0x07FF)
-#define C_MAG    BE(0xF81F)
 #define C_NAVY   BE(0x0010)
 #define C_TEAL   BE(0x0410)
+/* The five front-panel buttons, in the colours the stock firmware's menu bar
+ * uses for them (AGENTS.md, "The five front-panel buttons"). */
+#define C_KEY_GREY   BE(0xD69A)
+#define C_KEY_YELLOW BE(0xFF06)
+#define C_KEY_GREEN  BE(0x1200)
+#define C_KEY_BLUE   BE(0x00F8)
+#define C_KEY_RED    BE(0x8007)
 
 /* ~33 KB of link buffers: far too big for the stack. */
 static ow_device dev;
@@ -352,6 +359,16 @@ static void esp_mode_set(int32_t v) {
 #define PITCH1   11
 #define BTN_Y    276
 #define BTN_H    40
+/* The bottom row puts one label directly above each front-panel button. The
+ * buttons are equally spaced along the bottom edge, so the boxes are fixed
+ * fifths of the width, never sized to their labels. */
+#define KEY_W     ((ST7796_W - 12) / 5)   /* 93 */
+#define KEY_PITCH (KEY_W + 3)             /* 96 */
+#define KEY_X(i)  ((i) * KEY_PITCH)
+#define SCAN_W   80
+#define SCAN_H   24
+#define SCAN_X   (ST7796_W - SCAN_W - 4)
+#define SCAN_Y   2
 #define SWATCH_X 214
 #define SWATCH_S 16
 
@@ -448,50 +465,34 @@ static void swatch_update(void) {
 
 /* ── buttons ───────────────────────────────────────────────────────────── */
 typedef enum { ACT_RED, ACT_GREEN, ACT_BLUE, ACT_RAINBOW, ACT_OFF, ACT_SCAN, ACT_COUNT } action_t;
-typedef struct { const char* label; uint16_t bg, fg; int x, w; } button_t;
-static button_t buttons[ACT_COUNT] = {
-    [ACT_RED]     = { "RED",     C_RED,   C_WHITE, 0, 0 },
-    [ACT_GREEN]   = { "GREEN",   C_GREEN, C_BG,    0, 0 },
-    [ACT_BLUE]    = { "BLUE",    C_BLUE,  C_WHITE, 0, 0 },
-    [ACT_RAINBOW] = { "RAINBOW", C_BG,    C_WHITE, 0, 0 },
-    [ACT_OFF]     = { "OFF",     C_DGREY, C_WHITE, 0, 0 },
-    [ACT_SCAN]    = { "SCAN",    C_TEAL,  C_WHITE, 0, 0 },
+typedef struct { const char* label; uint16_t bg, fg; int x, y, w, h; } button_t;
+/* Each bottom-row box sits over its front-panel button and wears that
+ * button's colour. SCAN has no button in that row (it is OK or the nav
+ * centre), so it lives in the title bar rather than breaking the row. */
+static const button_t buttons[ACT_COUNT] = {
+    [ACT_OFF]     = { "OFF",     C_KEY_GREY,   C_BG,    KEY_X(0), BTN_Y, KEY_W, BTN_H },
+    [ACT_RAINBOW] = { "RAINBOW", C_KEY_YELLOW, C_BG,    KEY_X(1), BTN_Y, KEY_W, BTN_H },
+    [ACT_GREEN]   = { "GREEN",   C_KEY_GREEN,  C_WHITE, KEY_X(2), BTN_Y, KEY_W, BTN_H },
+    [ACT_BLUE]    = { "BLUE",    C_KEY_BLUE,   C_WHITE, KEY_X(3), BTN_Y, KEY_W, BTN_H },
+    [ACT_RED]     = { "RED",     C_KEY_RED,    C_WHITE, KEY_X(4), BTN_Y, KEY_W, BTN_H },
+    [ACT_SCAN]    = { "SCAN",    C_TEAL,       C_WHITE, SCAN_X, SCAN_Y, SCAN_W, SCAN_H },
 };
-static const uint16_t RAINBOW[6] = { C_RED, C_YEL, C_GREEN, C_CYAN, C_BLUE, C_MAG };
+/* Front-panel button to action, from UARTKBD_BTN_GREY: the same left-to-right
+ * order as the row. */
+static const action_t KEY_ACTION[5] = { ACT_OFF, ACT_RAINBOW, ACT_GREEN, ACT_BLUE, ACT_RED };
 static int      flash_btn = -1;
 static uint32_t flash_until;
-
-/* Width = label + an equal share of what is left, so every label fits. */
-static void buttons_layout(void) {
-    const int margin = 3, gap = 4;
-    int chars = 0, i, x = margin, spare;
-    for (i = 0; i < ACT_COUNT; i++) chars += (int)strlen(buttons[i].label);
-    spare = ST7796_W - 2 * margin - (ACT_COUNT - 1) * gap - chars * 12;
-    for (i = 0; i < ACT_COUNT; i++) {
-        buttons[i].x = x;
-        buttons[i].w = (int)strlen(buttons[i].label) * 12 + spare / ACT_COUNT +
-                       (i == ACT_COUNT - 1 ? spare % ACT_COUNT : 0);
-        x += buttons[i].w + gap;
-    }
-}
 
 static void button_draw(int i, int lit) {
     const button_t* b = &buttons[i];
     int tw = (int)strlen(b->label) * 12;
-    if (i == ACT_RAINBOW) {
-        for (int k = 0; k < 6; k++) {
-            int x0 = b->x + k * b->w / 6, x1 = b->x + (k + 1) * b->w / 6;
-            st7796_fill_rect(x0, BTN_Y, x1 - x0, BTN_H, RAINBOW[k]);
-        }
-    } else {
-        st7796_fill_rect(b->x, BTN_Y, b->w, BTN_H, b->bg);
-    }
-    st7796_draw_text(b->x + (b->w - tw) / 2, BTN_Y + (BTN_H - 16) / 2, 2, b->fg, b->bg, b->label);
-    if (lit) {
-        st7796_fill_rect(b->x, BTN_Y, b->w, 3, C_WHITE);
-        st7796_fill_rect(b->x, BTN_Y + BTN_H - 3, b->w, 3, C_WHITE);
-        st7796_fill_rect(b->x, BTN_Y, 3, BTN_H, C_WHITE);
-        st7796_fill_rect(b->x + b->w - 3, BTN_Y, 3, BTN_H, C_WHITE);
+    st7796_fill_rect(b->x, b->y, b->w, b->h, b->bg);
+    st7796_draw_text(b->x + (b->w - tw) / 2, b->y + (b->h - 16) / 2, 2, b->fg, b->bg, b->label);
+    if (lit) {   /* in the label colour, which contrasts with every box */
+        st7796_fill_rect(b->x, b->y, b->w, 3, b->fg);
+        st7796_fill_rect(b->x, b->y + b->h - 3, b->w, 3, b->fg);
+        st7796_fill_rect(b->x, b->y, 3, b->h, b->fg);
+        st7796_fill_rect(b->x + b->w - 3, b->y, 3, b->h, b->fg);
     }
 }
 
@@ -519,8 +520,8 @@ static void action_run(action_t a, uint32_t now) {
 static void screen_static(void) {
     st7796_fill_rect(0, 0, ST7796_W, 28, C_NAVY);
     st7796_draw_text(8, 6, 2, C_WHITE, C_NAVY, "DUAL CPU");
-    st7796_draw_text(116, 10, 1, C_CYAN, C_NAVY, "DISPLAY + ESP32 PEER STREAMS");
-    st7796_draw_text(ST7796_W - 6 - 23 * 6, 10, 1, C_GREY, C_NAVY, "v" APP_VERSION_STR "  HOLD HOME 5S EXIT");
+    st7796_draw_text(116, 5, 1, C_CYAN, C_NAVY, "DISPLAY + ESP32 PEER STREAMS");
+    st7796_draw_text(116, 16, 1, C_GREY, C_NAVY, "v" APP_VERSION_STR "  HOLD HOME 5S EXIT");
     st7796_draw_text(COL_L, 34, 1, C_CYAN, C_BG, "ESP32 TELEMETRY");
     st7796_draw_text(COL_R, 34, 1, C_CYAN, C_BG, "LINK / RTT / STREAMS");
     st7796_fill_rect(246, 32, 1, 234, C_DGREY);
@@ -657,9 +658,15 @@ static void touch_poll(uint32_t now) {
     static int was_down;
     uint16_t x, y;
     int down = ft6336_poll(&x, &y);
-    if (down && !was_down && y >= BTN_Y - 4) {
-        for (int i = 0; i < ACT_COUNT; i++)
-            if (x >= buttons[i].x && x < buttons[i].x + buttons[i].w) { action_run((action_t)i, now); break; }
+    if (down && !was_down) {
+        /* 4 px of slack above and below; the gaps between boxes do nothing. */
+        for (int i = 0; i < ACT_COUNT; i++) {
+            const button_t* b = &buttons[i];
+            if (x >= b->x && x < b->x + b->w && y + 4 >= b->y && y < b->y + b->h + 4) {
+                action_run((action_t)i, now);
+                break;
+            }
+        }
     }
     was_down = down;
 }
@@ -680,11 +687,11 @@ static void keys_poll(uint32_t now) {
         }
         if (!ev.pressed) continue;
         switch (ev.btn) {
-        case UARTKBD_BTN_RED:        action_run(ACT_RED, now); break;
-        case UARTKBD_BTN_GREEN:      action_run(ACT_GREEN, now); break;
-        case UARTKBD_BTN_BLUE:       action_run(ACT_BLUE, now); break;
-        case UARTKBD_BTN_YELLOW:     action_run(ACT_RAINBOW, now); break;
-        case UARTKBD_BTN_GREY:       action_run(ACT_OFF, now); break;
+        case UARTKBD_BTN_GREY:
+        case UARTKBD_BTN_YELLOW:
+        case UARTKBD_BTN_GREEN:
+        case UARTKBD_BTN_BLUE:
+        case UARTKBD_BTN_RED:        action_run(KEY_ACTION[ev.btn - UARTKBD_BTN_GREY], now); break;
         case UARTKBD_BTN_OK:
         case UARTKBD_BTN_NAV_CENTER: action_run(ACT_SCAN, now); break;
         default:                     break;
@@ -877,7 +884,6 @@ int main(void) {
     st7796_fill_screen(C_BG);
     board_backlight_set(1);
     touch_ok = ft6336_init();
-    buttons_layout();
     screen_static();
     field(F_LINK, C_YEL, "starting...");
     field(F_ESPMODE, C_YEL, "powering the esp32...");
