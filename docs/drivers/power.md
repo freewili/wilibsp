@@ -314,6 +314,53 @@ initiates any of them:
   ad-hoc scan's bounded demand window — a scan against a dark ESP32 raises
   the rail itself and is held pending until the ESP32 answers.
 
+## Releasing rails — an app inherits more than the boot-on set
+
+A standalone app does **not** start from the "On at boot?" column above. It
+starts from whatever the firmware before it left switched on: `fw ramrun`
+halts the stock DISPLAY firmware 3.5 s into its boot, and the loader hands
+over in whatever state it was in. Which rails that is varies from launch to
+launch — the same app has come up with the audio rail on (`rails=E3C7`) and
+off (`rails=E3C3`). And once the app is running nothing will ever switch an
+inherited rail off: the zone manager that releases idle rails is part of the
+firmware the app replaced, and `picpwr_ensure_awake()` / `picpwr_keep_awake()`
+are strictly additive by design.
+
+The audio rail (zone 3) is the one that matters. Inherited on, the codec is
+exactly as the stock firmware left it mid-playback — power and output
+drivers on (R1=0x15D, R3=0xED), speaker amp and 5 V boost enabled, DAC
+**unmuted** (R0A=0x000) — with no I2S clocks, for the life of the app.
+
+```c
+picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_CAN));  // what this app uses
+picpwr_release_unused();                               // drop what it does not
+...
+for (;;) { fw2_app_recovery_task(); picpwr_task(); ... }
+```
+
+- `picpwr_release_unused()` queues the release of every **app-owned** rail
+  that has not been requested with `picpwr_keep_awake()`:
+  `PICPWR_ZONE_MASK_APP_OWNED` = audio (3), sub-GHz/LoRa (4), RGB LEDs (10),
+  NFC/RFID (13) — the rails whose only user is the display CPU, i.e. the app
+  itself. Rails that serve the main CPU (Wi-Fi/BT 5, FPGA 6, analog 11,
+  CAN 15) are never released on inference: an app cannot see MAIN's needs.
+- `picpwr_release(zone_bits)` releases specific rails and drops them from the
+  keep-awake set (e.g. after the app is done with the codec — mute it first
+  with `codec_nau88c10_speaker_low_power()`).
+- Both are non-blocking. `picpwr_task()` sends the frame once two consecutive
+  status frames agree on the rail state and the send rate limit allows it
+  (2–3 s after the call), logging `picpwr: released rails <mask>`.
+- A released rail is remembered: the additive helpers rebuild their masks
+  from live rail state, where a just-released rail still reads as powered, and
+  would otherwise switch it straight back on. Asking for the rail again with
+  `picpwr_keep_awake()` clears that.
+
+The CPU is not where the heat goes: on the bench, sleeping the 250 MHz core
+97% of the time lowered the die by ~1 C. `board_die_temp_c()`
+(`bsp/platform/power.h`) reads the die sensor for before/after comparisons;
+canblast's `TEMP`, `KEEP z`, `DROP z` and `CODEC` RTT commands are the
+bench for this.
+
 ## Usage guidance
 
 - Request rails **before** initializing the peripherals that sit on

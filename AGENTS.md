@@ -26,7 +26,9 @@ built on. Read it before making changes.
   Today: `libs/onewili` — the generated OneWili C command API for driving the
   **main CPU** (GPIO, LEDs, radio, …) over the FwGUI display link (UART0,
   8 Mbaud), plus `ow_sd_*` for reading and writing the **SD card** the main
-  CPU owns (SDFS over the same link). See `libs/onewili/README.md`;
+  CPU owns (SDFS over the same link). The submodule ships every OneWili
+  language package; the display-CPU C package is `libs/onewili/wilibsp`
+  (see its `README.md`);
   `apps/toggleled` and `apps/hello_sdcard` are the worked examples.
 - `tools/fw.py` (+ `tools/fw` / `tools/fw.cmd` launchers) — a cross-platform
   CLI that drives CMake + OpenOCD identically on Windows and Linux.
@@ -42,7 +44,7 @@ radio, I2C sensors, DVI, and the agentio harness. The per-increment records
 live in `docs/superpowers/findings/`, summarized in
 `docs/hardware/facts.md` ("Hardware verification status") and tracked per
 peripheral in `docs/hardware/catalog.md`. Anything still marked TODO in the
-catalog (NFC, buttons, PIO-USB) is unverified because its driver has not been
+catalog (NFC, PIO-USB) is unverified because its driver has not been
 harvested yet.
 
 **Do not assume a doc's description of behavior is a confirmed result.** Where
@@ -61,6 +63,7 @@ Windows one — both just call `python tools/fw.py "$@"`).
 | `fw configure`      | Configure `build/` against the pinned Pico SDK + toolchain (`--clean` wipes it first). Rarely needed directly — `fw build` calls it.    |
 | `fw build [app]`    | Configure + build `apps/<app>` for the RP2350B target via `cmake --build --preset target --target <app>` (default app: `hello_display`) |
 | `fw flash [app]`    | Program `build/apps/<app>/<app>.elf` over the cmsis-dap debug probe via OpenOCD (`tools/openocd/freewili2.cfg`). **Refuses an ELF whose loadable segments sit in QSPI flash** — that would replace the stock DISPLAY firmware. Prefer `fw install-app`; override with `--replace-display-firmware` |
+| `fw ramrun [app]`   | Load a `no_flash` (SRAM) app over the probe and start it (`tools/openocd/ramrun.tcl`); `fw flash` cannot start SRAM apps (no flash bank at 0x20000000, and its reset boots the stock firmware) |
 | `fw rtt`            | Attach to the target and stream SEGGER RTT diagnostics (OpenOCD RTT server on port 9090)                                                |
 | `fw test`           | Configure + build + run the standalone host CTest tree in `tests/` (MinGW GCC + Ninja on Windows; no Pico SDK, no hardware)             |
 | `fw new-app <name>` | Scaffold `apps/<name>` by copying `apps/template` and rewriting the CMake target name                                                   |
@@ -329,14 +332,26 @@ for the full zone map, per-zone cautions, and the protocol):
 ```c
 fw2_app_recovery_init();                              // keyboard link + HOME recovery
 picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_AUDIO)); // or _CAN, _RGB_LEDS, ...
+picpwr_release_unused();   // and drop the inherited rails this app does NOT use
 // rails take ~1 s to apply; THEN init the peripheral
 ...
 while (true) {
     fw2_app_recovery_task();
-    picpwr_task();     // re-asserts your rails if the sequencer drops them
+    picpwr_task();     // re-asserts your rails if the sequencer drops them,
+                       // and carries out the queued release
     ...
 }
 ```
+
+**An app that runs hot is a rail that was never released.** An app inherits
+the rails of whatever ran before it — not the boot-on set — and nothing but
+the app will ever switch them off; the audio rail in particular is sometimes
+inherited on, with the codec left mid-playback. `picpwr_release_unused()`
+drops the app-owned rails (audio, sub-GHz/LoRa, RGB LEDs, NFC) the app did
+not ask for. The CPU is not the problem: sleeping the 250 MHz core 97% of the
+time moved the die ~1 C on the bench, so do not reach for WFI loops.
+`docs/drivers/power.md` ("Releasing rails"); `board_die_temp_c()`
+(`bsp/platform/power.h`) for before/after checks.
 
 A key qualification for anyone running **against the stock firmware**
 instead of a standalone BSP app: the default DISPLAY image runs an
@@ -385,6 +400,40 @@ the header, *"which VIO rail — 3.3 V, 5 V, or whatever the external Trig_IN/VR
 pin supplies?"* Only skip the question when the request already names one
 unambiguously (e.g. it cites a `PIN_*` define, or says "over OneWili").
 
+## The five front-panel buttons — label each one directly above it
+
+Five physical buttons sit in a row along the bottom edge of the LCD, equally
+spaced, left to right: **grey, yellow, green, blue, red**. Apps read them as
+`UARTKBD_BTN_GREY` … `UARTKBD_BTN_RED` (`bsp/input/uartkbd_parse.h`, values
+0-4 in that left-to-right order; `fw2kb` calls them `FW2KB_BTN_GRAY` …
+`FW2KB_BTN_RED`), and `fw press grey|yellow|green|blue|red` injects them. The
+nav pad, OK, CANCEL, PAGE and HOME are not part of this row.
+
+An on-screen label for one of these buttons must sit directly above it, so the
+user can see which button does what:
+
+- **Geometry:** five boxes along the bottom of the 480×320 screen; box *i*
+  (0 = grey) at `x = i * 96`, width `(ST7796_W - 12) / 5` = 93, so 3 px gaps.
+  That is the stock firmware's own menu bar. The height is the app's choice.
+- **Keep the physical order and the fixed fifths.** Never size boxes to their
+  labels, reorder them to suit the text, or add a sixth box to the row. An
+  action with no coloured button (one bound to OK, say) gets its touch target
+  somewhere else on the screen. A button that does nothing in the app gets no
+  box; leave its slot empty rather than moving the others.
+- **Colour:** fill each box with its button's colour and write what the button
+  does. In the wire order `st7796_fill_rect()` takes: grey `0x9AD6`, yellow
+  `0x06FF`, green `0x0012`, blue `0xF800`, red `0x0780`. The stock bar writes
+  white on all five; black reads better on the light grey and yellow boxes,
+  which is what `apps/dualcpu` does.
+- **Touch:** if the labels are also touch targets, hit-test the same
+  rectangles, so touching a label and pressing the button under it do the same
+  thing.
+
+`apps/dualcpu` is the example whose labels are also touch targets;
+`apps/canblast` labels four buttons and leaves grey's slot empty;
+`apps/hello_keyboard` and `apps/retrochat` draw the same bar, display-only, for
+the chord keyboard.
+
 ## How to add a driver
 
 The BSP grows by harvesting a proven driver from one of the owner's other
@@ -429,8 +478,8 @@ Since `agentio` (verified 2026-07-26) an agent can drive the board and see the
 panel directly, with no human present. **Use it.** With a CMSIS-DAP probe
 attached:
 
-    fw build <app> && fw flash <app>
-    fw screenshot -o shot.png     # then actually LOOK at the PNG
+    fw build <app> && fw ramrun <app>    # SRAM apps; fw flash is for flash images only
+    fw screenshot -o shot.png     # then actually LOOK at the PNG (not during high-rate traffic: the capture stalls the app)
     fw press green                # inject a button
     fw touch 240 160              # inject a touch
     fw type "hello"               # type through the chord engine
@@ -461,6 +510,13 @@ result. `fw flash`/`fw rtt`/`fw screenshot` all need the probe; a board in
 BOOTSEL mass-storage mode can take a UF2 but gives you no RTT channel, so
 none of the agentio verbs work against it.
 
+**Gotcha:** a leftover OpenOCD (from a crashed script) keeps the probe and
+serves an RTT session bound to the image that was loaded when it started, so
+a freshly `fw ramrun` app looks silent. Kill strays before relaunching. After
+a MAIN reflash the on-board probe re-enumerates for a few seconds. Never leave
+a core in debug halt: TIMER0 pauses for both cores (DBGPAUSE) and every sleep
+in the app freezes; `ramrun.tcl` clears those bits after the jump.
+
 **Gotcha:** back-to-back one-shot commands can fail with `openocd did not open
 port 9091 within 10s` because the previous OpenOCD has not released the probe.
 Leave a couple of seconds between them, or keep a `fw rtt` running — it holds
@@ -477,7 +533,7 @@ the probe once and every one-shot verb reuses it.
 - **On-hardware verification records**: `docs/superpowers/findings/*-e2e.md` —
   what was actually run on the board and what came back. Check here before
   claiming any behavior is confirmed.
-- **Main-CPU control (OneWili over the FwGUI link)**: `libs/onewili/README.md`.
+- **Main-CPU control (OneWili over the FwGUI link)**: `libs/onewili/wilibsp/README.md`.
 - **Related default-firmware subsystems** (implemented upstream in the default
   FreeWili 2 firmware, not in this BSP): LoRa WIO-E5 bridge
   (`docs/drivers/lora.md`), NFC ST25R3916B, ESP32-C5 Bottlenose

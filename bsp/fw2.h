@@ -7,6 +7,7 @@
 
 #include "platform/board.h"   // (Task 3)
 #include "platform/ioexp.h"   // (Task 3) PCAL6524: antenna, rail power, GPIO VREF select
+#include "platform/power.h"   // idle until the next interrupt, die temperature
 #include "display/st7796.h" // (Task 4)
 #include "display/hstx_dvi.h"   // (harvested: 640x480p60 DVI over HSTX, GPIO 12-19)
 #include "display/dvi_osd.h"    // (harvested: software OSD for the DVI video region)

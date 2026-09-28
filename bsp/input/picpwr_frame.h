@@ -82,4 +82,28 @@ static inline uint32_t picpwr_reassert_awake(uint32_t cached_awake,
     return (cached_awake | rails | desired) & PICPWR_ZONE_MASK_ALL;
 }
 
+/* Rails whose only user is the display CPU: the audio codec, the sub-GHz /
+ * LoRa radios, the RGB LEDs and NFC/RFID. A standalone app is the display
+ * CPU's whole firmware, so a rail in this set that the app has not asked
+ * for has no user at all. The other default-off rails (Wi-Fi/BT, FPGA,
+ * analog, CAN) serve the main CPU, whose needs an app cannot see, and are
+ * never released on inference. */
+#define PICPWR_ZONE_MASK_APP_OWNED                                   \
+    ((1u << (PICPWR_ZONE_AUDIO - 1)) | (1u << (PICPWR_ZONE_SUBGHZ - 1)) | \
+     (1u << (PICPWR_ZONE_RGB_LEDS - 1)) | (1u << (PICPWR_ZONE_NFC_RFID - 1)))
+
+/* Awake mask for switching rails OFF: live state plus every kept rail,
+ * minus the rails being released. A kept rail (desired) is never cleared,
+ * whatever release says.
+ *
+ *   rails    — live rail state from the status frame
+ *   desired  — accumulated picpwr_keep_awake() requests
+ *   release  — rails to switch off
+ */
+static inline uint32_t picpwr_release_awake(uint32_t rails,
+                                           uint32_t desired,
+                                           uint32_t release) {
+    return ((rails & ~release) | desired) & PICPWR_ZONE_MASK_ALL;
+}
+
 #endif /* PICPWR_FRAME_H */

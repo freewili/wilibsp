@@ -53,7 +53,9 @@ backspace (above). Button state arrives from the FW2 UART keyboard
     }
 
 `apps/hello_keyboard` is the worked example (soft-button bar + text area +
-touch zones). Link health: `uartkbd_frames()` / `uartkbd_errors()` — a
+touch zones). Draw each label in a box directly above its physical button:
+five boxes at `x = i * 96`, width 93, in the button's colour (see AGENTS.md,
+"The five front-panel buttons"). Link health: `uartkbd_frames()` / `uartkbd_errors()` — a
 healthy link shows frames climbing and errors static.
 
 **Charger telemetry:** the same status frame carries charger data in bytes

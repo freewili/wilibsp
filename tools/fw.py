@@ -549,6 +549,15 @@ def flash_command(app, replace_display_firmware=False):
             check_flash_elf(path)
     return _openocd_base() + ["-c", f"program {elf} verify reset exit"]
 
+def ramrun_command(app):
+    """Load a no_flash (SRAM) app over the probe and start it. `fw flash`
+    cannot: OpenOCD's `program` has no flash bank at 0x20000000 and its
+    reset would boot the stock firmware. tools/openocd/ramrun.tcl explains
+    the sequence (boot stock, park core 1, quiesce, load, jump)."""
+    elf = REPO_ROOT / "build" / "apps" / app / f"{app}.elf"
+    return _openocd_base() + ["-c", f"set ELF {elf.as_posix()}",
+                              "-f", str(REPO_ROOT / "tools" / "openocd" / "ramrun.tcl")]
+
 def rtt_command():
     """OpenOCD serving BOTH RTT channels: 0 (DIAG) and 1 (agentio). Only one
     process can own the debug probe, so a running `fw rtt` doubles as the
@@ -777,6 +786,8 @@ def main(argv=None):
     sp = sub.add_parser("configure")
     sp.add_argument("--clean", action="store_true", help="wipe build/ before configuring")
     sp.add_argument("--print", dest="show", action="store_true")
+    sp = sub.add_parser("ramrun"); sp.add_argument("app", nargs="?", default=DEFAULT_APP)
+    sp.add_argument("--print", dest="show", action="store_true")
     sp = sub.add_parser("rtt")
     sp.add_argument("--print", dest="show", action="store_true")
     sp.add_argument("-s", "--seconds", type=int, default=0,
@@ -833,6 +844,7 @@ def main(argv=None):
             print(f"fw flash: refusing to program {a.app}\n{exc}", file=sys.stderr)
             return 2
         _run(command, a.show)
+    elif a.cmd == "ramrun": _run(ramrun_command(a.app), a.show)
     elif a.cmd == "rtt":
         if a.show:
             _run(rtt_command(), True)
