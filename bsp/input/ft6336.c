@@ -85,8 +85,12 @@ static bool     s_inj_down;
 static uint32_t s_inj_reads;
 
 void ft6336_inject_set(uint16_t x, uint16_t y, bool down) {
-    s_inj_x = x;
-    s_inj_y = y;
+    // An injected point arrives from the agentio channel as plain text, so it
+    // has not been through the chip mapping that bounds a real touch. Clamp it
+    // to the panel: ft6336_poll promises screen coordinates either way.
+    ft_point_t p = ft6336_clamp_point((int)x, (int)y);
+    s_inj_x = p.x;
+    s_inj_y = p.y;
     s_inj_down = down;
     if (down) s_inj_reads = 0;   // fresh count per injected press
 }

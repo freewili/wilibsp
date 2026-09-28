@@ -7,6 +7,16 @@
 #define MSC_SUBCLASS_SCSI 0x06
 #define MSC_PROTO_BOT     0x50
 
+// Largest packet a full-speed bulk or interrupt pipe can carry (USB 2.0
+// 5.7.3/5.8.3). This controller is full-speed only, and the host controller's
+// per-endpoint DPRAM windows are sized for it, so a descriptor asking for more
+// than this is out of spec and cannot be honoured.
+#define USB_FS_MAX_PACKET 64u
+
+// wMaxPacketSize bits 10:0 carry the size; bits 12:11 are the high-speed
+// additional-transaction count and are not part of it (USB 2.0 9.6.6).
+#define USB_EP_MPS_MASK   0x07FFu
+
 typedef struct {
     uint8_t  config_value;    // bConfigurationValue
     bool     is_hub;

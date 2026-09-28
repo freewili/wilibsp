@@ -43,6 +43,13 @@ APP_WINDOWS = (("SRAM", 0x20000000, 0x20070000),
                ("PSRAM", 0x11000000, 0x11800000))
 PT_LOAD = 1
 
+# make_app_uf2.py stamps every block with the RP2350 Arm-secure family, so a
+# block that declares a family and names a different one was built for another
+# chip. The address windows alone do not catch that: RP2040 SRAM also starts at
+# 0x20000000, so its blocks land inside the SRAM app window.
+UF2_FLAG_FAMILY_ID = 0x00002000
+RP2350_ARM_S_FAMILY_ID = 0xE48BFF59
+
 def check_app_uf2(path):
     """Fail closed unless every UF2 payload targets DISPLAY SRAM or PSRAM."""
     data = pathlib.Path(path).read_bytes()
@@ -54,7 +61,7 @@ def check_app_uf2(path):
     seen_blocks = set()
     for index in range(len(data) // 512):
         block = data[index * 512:(index + 1) * 512]
-        m0, m1, flags, address, size, block_no, num_blocks, _family = struct.unpack_from("<8I", block)
+        m0, m1, flags, address, size, block_no, num_blocks, family = struct.unpack_from("<8I", block)
         end, = struct.unpack_from("<I", block, 508)
         if (m0, m1, end) != UF2_MAGIC:
             raise ValueError(f"UF2 block {index} has invalid magic")
@@ -67,6 +74,10 @@ def check_app_uf2(path):
         if block_no in seen_blocks:
             raise ValueError(f"UF2 block {index} duplicates block number {block_no}")
         seen_blocks.add(block_no)
+        if flags & UF2_FLAG_FAMILY_ID and family != RP2350_ARM_S_FAMILY_ID:
+            raise ValueError(
+                f"UF2 block {index} declares family 0x{family:08x}, "
+                f"not RP2350 Arm secure (0x{RP2350_ARM_S_FAMILY_ID:08x})")
         if flags & 1 or size == 0:
             continue
         if QSPI_FLASH[0] <= address < QSPI_FLASH[1]:

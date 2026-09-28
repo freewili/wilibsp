@@ -13,9 +13,15 @@ endif()
 
 add_test(NAME python_app_contract
     COMMAND ${Python3_EXECUTABLE} -m pytest -q
-            ${CMAKE_CURRENT_SOURCE_DIR}/test_app_contract.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/../tools/tests/test_uf2_info.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/../tools/tests/test_make_app_uf2.py)
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_app_contract.py)
+
+# The rest of the Python suites, including the fw CLI's flash-protection and
+# install-app guards. Those decide whether a UF2 may reach the card at all, so
+# `fw test` should be the thing that says they still hold.
+add_test(NAME python_tools
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q
+            ${CMAKE_CURRENT_SOURCE_DIR}/../tools/tests
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_no_private_refs.py)
 
 # Standalone tree: no Pico SDK, no pico_sdk_init(). Pure-logic modules from
 # ../bsp are compiled directly against the host C compiler so tests run
@@ -162,6 +168,10 @@ add_test(NAME ir_manchester COMMAND test_ir_manchester)
 add_executable(test_ir_kaseikyo test_ir_kaseikyo.c ${BSPIR}/ir_decode.c ${BSPIR}/ir_encode.c ${BSPIR}/ir_protocols.c)
 target_include_directories(test_ir_kaseikyo PRIVATE ${BSPIR} ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ir_kaseikyo COMMAND test_ir_kaseikyo)
+
+add_executable(test_ir_strict_length test_ir_strict_length.c ${BSPIR}/ir_decode.c ${BSPIR}/ir_encode.c ${BSPIR}/ir_protocols.c)
+target_include_directories(test_ir_strict_length PRIVATE ${BSPIR} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ir_strict_length COMMAND test_ir_strict_length)
 
 add_executable(test_ir_dispatch test_ir_dispatch.c ${BSPIR}/ir_decode.c ${BSPIR}/ir_encode.c ${BSPIR}/ir_protocols.c)
 target_include_directories(test_ir_dispatch PRIVATE ${BSPIR} ${CMAKE_CURRENT_SOURCE_DIR})
@@ -319,3 +329,19 @@ target_include_directories(test_rc_compose PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME rc_compose COMMAND test_rc_compose)
+
+add_executable(test_usb_parse
+    test_usb_parse.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usbhost/usb_parse.c)
+target_include_directories(test_usb_parse PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME usb_parse COMMAND test_usb_parse)
+
+add_executable(test_ft6336_map
+    test_ft6336_map.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/input/ft6336_map.c)
+target_include_directories(test_ft6336_map PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ft6336_map COMMAND test_ft6336_map)

@@ -3,6 +3,16 @@
 
 enum { DT_CONFIG = 2, DT_INTERFACE = 4, DT_ENDPOINT = 5 };
 
+// wMaxPacketSize arrives from the device and ends up as the buffer length the
+// host controller is told it may write into a fixed DPRAM window, so strip the
+// high-speed transaction bits and cap the size before anyone stores it. A
+// device asking for more than a full-speed pipe can carry is out of spec;
+// honouring it would let the controller run past the end of that window.
+static uint16_t ep_packet_size(const uint8_t *p) {
+    uint16_t mps = (uint16_t)(p[4] | (p[5] << 8)) & USB_EP_MPS_MASK;
+    return mps > USB_FS_MAX_PACKET ? (uint16_t)USB_FS_MAX_PACKET : mps;
+}
+
 bool usb_parse_config(const uint8_t *d, uint16_t len, usb_cfg_info_t *out) {
     memset(out, 0, sizeof *out);
     if (len < 9 || d[0] < 9 || d[1] != DT_CONFIG) return false;
@@ -34,7 +44,11 @@ bool usb_parse_config(const uint8_t *d, uint16_t len, usb_cfg_info_t *out) {
         case DT_ENDPOINT: {
             if (dlen < 7) return false;
             uint8_t  addr = p[2], attr = p[3] & 0x03;
-            uint16_t mps  = (uint16_t)(p[4] | (p[5] << 8));
+            uint16_t mps  = ep_packet_size(p);
+            // A zero-length pipe cannot carry a transfer. Leaving it
+            // unrecorded lets the completeness checks below reject the device
+            // rather than arming an endpoint that can never move data.
+            if (mps == 0) break;
             if (in_msc_itf && attr == 0x02) {           // bulk
                 if (addr & 0x80) { out->bulk_in = addr;  out->bulk_in_mps = mps; }
                 else             { out->bulk_out = addr; out->bulk_out_mps = mps; }

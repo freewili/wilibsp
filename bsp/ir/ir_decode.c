@@ -49,7 +49,7 @@ bool ir_decode_nec(const uint32_t *t, uint32_t n, ir_message_t *out) {
         out->repeat = true;
         return true;
     }
-    if (n < 67) return false;
+    if (n != 67) return false;
     if (!ir_match_us(t[0], 9000) || !ir_match_us(t[1], 4500)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 32, 560, 560, 1690, true, &v)) return false;
@@ -69,7 +69,7 @@ bool ir_decode_nec(const uint32_t *t, uint32_t n, ir_message_t *out) {
 }
 
 bool ir_decode_samsung32(const uint32_t *t, uint32_t n, ir_message_t *out) {
-    if (n < 67) return false;
+    if (n != 67) return false;
     if (!ir_match_us(t[0], 4500) || !ir_match_us(t[1], 4500)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 32, 550, 550, 1650, true, &v)) return false;
@@ -102,7 +102,7 @@ bool ir_decode_sirc(const uint32_t *t, uint32_t n, ir_message_t *out) {
 }
 
 bool ir_decode_rca(const uint32_t *t, uint32_t n, ir_message_t *out) {
-    if (n < 51) return false;
+    if (n != 51) return false;
     if (!ir_match_us(t[0], 4000) || !ir_match_us(t[1], 4000)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 24, 500, 1000, 2000, false, &v)) return false;  // MSB-first
@@ -204,7 +204,7 @@ bool ir_decode_rc6(const uint32_t *t, uint32_t n, ir_message_t *out) {
 }
 
 bool ir_decode_kaseikyo(const uint32_t *t, uint32_t n, ir_message_t *out) {
-    if (n < 99) return false;
+    if (n != 99) return false;
     if (!ir_match_us(t[0], 3456) || !ir_match_us(t[1], 1728)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 48, 432, 432, 1296, true, &v)) return false;

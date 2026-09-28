@@ -98,8 +98,8 @@ recommended convention.
 
 **Status:** every harvested driver group has passed its `hello_*` smoke
 test on a physical board (most recently `hello_ir`'s TX→RX loopback and
-`hello_usbdrive`'s thumb-drive mount, 2026-07-06). The host test tree is at
-26 green binaries. `docs/hardware/facts.md` records the hard-won invariants
+`hello_usbdrive`'s thumb-drive mount, 2026-07-06). `fw test` runs the host
+test tree green. `docs/hardware/facts.md` records the hard-won invariants
 — shared SPI1 arbitration, shared DMA_IRQ_0 ownership, pio2 cohabitation
 (radio GDO capture + IR, radio inits first), the power-gated rails on the
 PCAL6524 I/O expander — and keeps claims scoped to what a bench session

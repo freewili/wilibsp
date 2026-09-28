@@ -13,11 +13,12 @@ class FakeSerial:
     def write(self, data): self.writes.append(data)
     def readline(self): return next(self.replies, b"")
 
-def app_uf2(address=0x11000000, block_no=0, num_blocks=1):
+def app_uf2(address=0x11000000, block_no=0, num_blocks=1, flags=0,
+            family=0xE48BFF59):
     import struct
     data = bytearray(512)
-    struct.pack_into("<8I", data, 0, 0x0A324655, 0x9E5D5157, 0,
-                     address, 256, block_no, num_blocks, 0xE48BFF59)
+    struct.pack_into("<8I", data, 0, 0x0A324655, 0x9E5D5157, flags,
+                     address, 256, block_no, num_blocks, family)
     struct.pack_into("<I", data, 508, 0x0AB16F30)
     return bytes(data)
 
@@ -515,3 +516,30 @@ def test_flash_command_without_a_build_still_produces_a_command(tmp_path, monkey
     monkeypatch.setattr(fw, "REPO_ROOT", tmp_path)
     command = fw.flash_command("nothing_here")
     assert any("nothing_here.elf" in part for part in command)
+
+def test_check_app_uf2_rejects_foreign_family_id(tmp_path):
+    # RP2040's SRAM starts at 0x20000000 too, so the address windows cannot
+    # tell an RP2040 image apart from ours. The declared family can.
+    source = tmp_path / "rp2040.uf2"
+    source.write_bytes(app_uf2(address=0x20000000,
+                               flags=fw.UF2_FLAG_FAMILY_ID,
+                               family=0xE48BFF56))
+    try:
+        fw.check_app_uf2(source)
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "family" in str(exc)
+
+def test_check_app_uf2_accepts_declared_rp2350_family(tmp_path):
+    source = tmp_path / "ours.uf2"
+    source.write_bytes(app_uf2(address=0x20000000,
+                               flags=fw.UF2_FLAG_FAMILY_ID,
+                               family=fw.RP2350_ARM_S_FAMILY_ID))
+    assert fw.check_app_uf2(source) == "SRAM"
+
+def test_check_app_uf2_ignores_family_when_not_declared(tmp_path):
+    # Without the family-ID flag the field is not a family, so it carries no
+    # claim to check.
+    source = tmp_path / "nofamily.uf2"
+    source.write_bytes(app_uf2(address=0x20000000, flags=0, family=0))
+    assert fw.check_app_uf2(source) == "SRAM"
