@@ -63,7 +63,7 @@ once each one gets a driver** — do not assume `FwDisplayVibe.md` is exact
 | DVI_D1_P | 17 | HSTX DVI | DONE (`bsp/display/hstx_dvi`) |
 | DVI_D2_N | 18 | HSTX DVI | DONE (`bsp/display/hstx_dvi`) |
 | DVI_D2_P | 19 | HSTX DVI | DONE (`bsp/display/hstx_dvi`) |
-| Haptic motor | 46 | Haptic driver | TODO |
+| Haptic motor | 35 | Haptic driver | TODO |
 | Buttons TX | 38 | 14-button serial coprocessor (UART out) | TODO |
 | Buttons RX | 39 | 14-button serial coprocessor (UART in) | TODO |
 | PIO-USB D+ | 42 | PIO-USB HID host root port 1 |
