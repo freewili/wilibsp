@@ -221,7 +221,7 @@ wilibsp/
   AGENTS.md                   dense agent orientation (read this first)
   CLAUDE.md                   thin pointer to AGENTS.md
   FwDisplayVibe.md            original hardware description (secondary source —
-                               known to have at least one error; see facts.md)
+                               board.h wins on any disagreement)
 ```
 
 ## Further reading
@@ -229,8 +229,7 @@ wilibsp/
 - [`AGENTS.md`](./AGENTS.md) — command vocabulary, hardware invariants, how
   to add a driver, naming conventions.
 - [`docs/hardware/pinmap.md`](./docs/hardware/pinmap.md) — full pin table.
-- [`docs/hardware/facts.md`](./docs/hardware/facts.md) — hard-won invariants
-  and the LED-count discrepancy record.
+- [`docs/hardware/facts.md`](./docs/hardware/facts.md) — hard-won invariants.
 - [`docs/hardware/catalog.md`](./docs/hardware/catalog.md) — peripheral →
   driver status → harvest source (incl. the "Implemented upstream" table).
 - [`libs/onewili/wilibsp/README.md`](./libs/onewili/wilibsp/README.md) —

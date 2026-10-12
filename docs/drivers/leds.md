@@ -6,8 +6,7 @@ line, `PIN_LED_DATA` = GPIO 21) via a `pio1` state machine
 `pico_generate_pio_header` in `bsp/CMakeLists.txt`). Output is inverted at
 the driver-chip level, handled inside `ws2812_driver.c`.
 `bsp/leds/led_color.{c,h}` provides pure `rgb_t` pack/scale helpers.
-**16 is the verified count** — see the discrepancy record in
-`docs/hardware/facts.md` (`FwDisplayVibe.md` says 7 and is wrong).
+**16 is the verified count** (`WS2812_NUM_PIXELS`).
 
 `bsp/leds/led_ui.{c,h}` layers a higher-level "signal indicator" API
 (breathing fade, spectrum-to-LED mapping) on top, backed by

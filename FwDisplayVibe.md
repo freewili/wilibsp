@@ -24,7 +24,7 @@ There is a FT6336U touch screen controller on the I2C bus. There is no connectio
 
 The backlight is controlled by gpio 25.
 
-The LCD SPI bus is shared with CC1101 radio. Its chip select is on GPIO 23 . GDO is connected to pin32. GDO2 is connected to GPIO37.  MISO from CC1101 is connected to the LCD_DC_D GPIO 8.
+The LCD SPI bus is shared with CC1101 radio. Its chip select is on GPIO 40, shared through a mux with the WIO-E5 LoRa UART TX (GPIO 23 is the WIO-E5 UART RX). GDO is connected to pin32. GDO2 is connected to GPIO37.  MISO from CC1101 is connected to the LCD_DC_D GPIO 8.
 
 There is a haptic motor present on gpio 46.
 
@@ -52,7 +52,7 @@ There is a DVI interface connected to the HSTX perphial. The GPIOs are as follow
 
 - DVI_D2_P        19
 
-There are 7 ws serial LEDs connected to GPIO 21. The signal is inverted with a driver chip.
+There are 16 ws serial LEDs connected to GPIO 21. The signal is inverted with a driver chip.
 
 It has a I2S audio codec and amplifier (NAU88C10YG) connected to a speaker and 3.5 mm jack for an  microphone and speaker. It's I2C address is 26. The codec is connected to the following GPIOs. 
 

@@ -201,11 +201,6 @@ BSP was harvested from. They are also recorded in `docs/hardware/facts.md`.
    owns the handover. See `docs/drivers/lora.md`.
 6. **LED count = 16.** `FW2_LED_COUNT` / `WS2812_NUM_PIXELS`
    (`bsp/leds/ws2812_driver.h`) = 16, on `pio1` via `PIN_LED_DATA` (GPIO 21).
-   `FwDisplayVibe.md` (repo root, the original hardware description) says 7
-   and is **WRONG** — the verified board header wins. `FwDisplayVibe.md` also
-   disagrees with `board.h` on the CC1101 chip-select pin (says GPIO 23;
-   `board.h`/`board.c` say GPIO 40 and actively drive it). See
-   `docs/hardware/facts.md` for both discrepancy records.
 7. **No LCD reset GPIO.** The panel relies on SWRESET only; RESX is
    hardware/ioexp-handled (`bsp/platform/ioexp.c` releases it as part of
    `ioexp_init()`). Don't look for a `PIN_LCD_RESET`-style define — there
@@ -668,10 +663,9 @@ counters over RTT instead while a link is busy.
   `ow_sd_*` is the only route (`apps/hello_sdcard`).
 - **Original hardware description**: `FwDisplayVibe.md` (repo root) — a
   secondary source, useful for the broader peripheral inventory (radio, NFC,
-  IR, DVI, audio, mics, buttons, PIO-USB, sensors) not yet in `board.h`, but
-  known to contain at least one error (LED count — see above). When it
-  conflicts with `bsp/platform/board.h` or `bsp/leds/ws2812_driver.h`, the
-  verified board header/driver code wins.
+  IR, DVI, audio, mics, buttons, PIO-USB, sensors) not yet in `board.h`.
+  If it ever conflicts with `bsp/platform/board.h` or a driver, the verified
+  board header/driver code wins.
 - **Full implementation plan / spec**:
   `docs/superpowers/plans/2026-07-01-freewili2-bsp.md`.
 - **Agent E2E harness (input injection + screen capture)**:
@@ -725,8 +719,8 @@ a new kind of private breadcrumb is discovered.
   channel (invariant 4).
 - If you touch GPIO8, remember it is dual-purpose (LCD_DC / CC1101 MISO)
   (invariant 5).
-- Trust `bsp/platform/board.h` over `FwDisplayVibe.md` for any pin or LED
-  count discrepancy (invariant 6).
+- Trust `bsp/platform/board.h` over `FwDisplayVibe.md` if the two ever
+  disagree.
 - **Ask which GPIO the user means** — external header pin (main CPU, OneWili,
   needs VIO) or internal display-CPU pin (`board.h`, plain SDK calls)? They
   share a numbering space; GPIO 25 is valid as both. See the section above.
