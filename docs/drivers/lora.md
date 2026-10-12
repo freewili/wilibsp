@@ -40,8 +40,7 @@ firmware) starts from facts instead of guesses.
   `docs/hardware/facts.md` and `docs/drivers/radio.md`.
 - **GPIO 23 is the WIO UART RX** — its net is the schematic's
   `LoRA_SPI_CS`, connecting the DISPLAY
-  to the module's PB6 (USART1 TX). That is the real signal behind
-  `FwDisplayVibe.md`'s "GPIO 23" chip-select figure.
+  to the module's PB6 (USART1 TX).
 - The WIO bridge serves **two UART masters**: the DISPLAY on the USART1 leg
   above (the LoRa-bridge link) and the **ESP32-C5 on LPUART1 (PC0/PC1)** —
   the module's PC0/PC1 nets `WIO_Rx` / `WIO_Tx` run to the ESP32, not the

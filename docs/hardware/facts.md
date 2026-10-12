@@ -72,51 +72,31 @@ already documents the intended arbitration API
 (`spi_bus_acquire_cc1101()` / `spi_bus_release_cc1101()` /
 `spi_bus_cc1101_cs()`) for whenever the radio driver is harvested.
 
-## LED count = 16 (LED discrepancy record)
+## LED count = 16
 
-**`FwDisplayVibe.md`** (repo root, the original hardware description) says:
-
-> There are 7 ws serial LEDs connected to GPIO 21.
-
-**The verified board header and driver disagree and are authoritative:**
 `bsp/leds/ws2812_driver.h` defines `WS2812_NUM_PIXELS 16` and
 `FW2_LED_COUNT` as an alias for it — "single source of truth = 16, verified
 board" per the header's own comment. `bsp/leds/ws2812_driver.c` drives 16
-pixels on `pio1` via `PIN_LED_DATA` (GPIO 21, matching `FwDisplayVibe.md` on
-the GPIO, just not the count).
+pixels on `pio1` via `PIN_LED_DATA` (GPIO 21).
 
-**Resolution: 16 is authoritative.** Do not use the `FwDisplayVibe.md` count
-of 7 anywhere in code, docs, or tests. If you ever see `7` in a new context
-describing this board's LEDs, treat it as the same stale figure and correct
-it to 16.
+## CC1101 chip-select is GPIO 40
 
-## CC1101 chip-select GPIO discrepancy
+`bsp/platform/board.h` defines `PIN_CC1101_CS 40`, and `board_init()`
+(`bsp/platform/board.c`) actively drives GPIO 40 HIGH at boot to park the
+CC1101 off the shared SPI1 bus before any LCD traffic. GDO0 is GPIO 32 and
+GDO2 GPIO 37.
 
-**`FwDisplayVibe.md` says:**
-
-> The LCD SPI bus is shared with CC1101 radio. Its chip select is on GPIO 23.
-
-**`bsp/platform/board.h` and `bsp/platform/board.c` disagree and are
-authoritative:** `#define PIN_CC1101_CS 40`, and `board_init()` actively
-drives GPIO 40 (not 23) HIGH at boot to park the CC1101 off the shared SPI1
-bus before any LCD traffic. GDO0 (GPIO32) and GDO2 (GPIO37) match between the
-two sources, so this is specifically a chip-select-pin discrepancy, not a
-wholesale renumbering.
-
-**Resolution: GPIO 40 is authoritative** for `PIN_CC1101_CS`. When the CC1101
-driver is eventually harvested (see `docs/hardware/catalog.md`), use
-`board.h`'s `PIN_CC1101_CS` macro rather than hard-coding either number.
-Note: 'authoritative for `PIN_CC1101_CS`' means the pin the macro names —
-which `board_init()` parks HIGH. In the default firmware that same pin is
+When the CC1101 driver is eventually harvested (see
+`docs/hardware/catalog.md`), use `board.h`'s `PIN_CC1101_CS` macro rather
+than hard-coding the number. In the default firmware that same pin is
 the **WIO-E5 UART TX**, not a dedicated CC1101 chip-select output driven
 directly — the CSn is reachable only through the IC113 mux under the
 sub-GHz arbiter (see the GPIO40 section below).
 
-**GPIO 23 is, in fact, the WIO-E5 LoRa UART RX** (display-side PIO UART at
+**GPIO 23 is the WIO-E5 LoRa UART RX** (display-side PIO UART at
 115200 baud, TX = GPIO 40; see `docs/drivers/lora.md`). Verified against the firmware and the board schematics: the DISPLAY's
 LoRa PIO UART uses GPIO 23 as its RX, and the schematic's
-`LoRA_SPI_CS` net runs from DISPLAY GPIO 23 to the WIO module's PB6 (USART1 TX). The `FwDisplayVibe.md` 'GPIO 23' figure is **consistent
-with** this WIO RX pin — a real signal, just not the CC1101 chip-select.
+`LoRA_SPI_CS` net runs from DISPLAY GPIO 23 to the WIO module's PB6 (USART1 TX).
 
 ## GPIO 40: WIO-E5 UART TX, shared with the CC1101 CS via the IC113 mux
 

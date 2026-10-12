@@ -4,9 +4,7 @@
 its `#define`s verbatim (line-referenced). Where a peripheral isn't in
 `board.h` yet (no driver in this repo), its GPIOs come from the secondary
 source `FwDisplayVibe.md` (repo root) and are marked accordingly — verify
-against `board.h` again once that peripheral gets a driver, since
-`FwDisplayVibe.md` is known to contain at least one error (see
-`docs/hardware/facts.md`).
+against `board.h` again once that peripheral gets a driver.
 
 ## Verified (`bsp/platform/board.h`) — has a driver in `bsp/`
 
@@ -18,7 +16,7 @@ against `board.h` again once that peripheral gets a driver, since
 | `PIN_LCD_MOSI` | 11 | SPI1 (LCD TX) | |
 | `PIN_LCD_TE` | 33 | LCD tearing-effect output | Unused by the driver |
 | `PIN_LCD_BL` | 25 | LCD backlight | Plain on/off GPIO (no PWM dimming yet) |
-| `PIN_CC1101_CS` | 40 | CC1101 chip-select | Active low; parked HIGH in `board_init()` before any LCD traffic. **`FwDisplayVibe.md` says GPIO 23 for this signal — that's a second discrepancy; `board.h`/`board.c` (which actively drives GPIO 40 HIGH at boot) is authoritative. GPIO 23's real job is the WIO-E5 LoRa UART RX. GPIO 40 is a shared line by design: through the IC113 mux (`SN74LVC1G3157`, S = `LoRA_1101_SEL = NOR(V1_1, V2_1)`) it reaches either `SCREEN_CS1` (shared LCD/CC1101 CSn) or `LoRA_PB7` (WIO UART RX); the default firmware drives it as the WIO UART TX, and the sub-GHz arbiter switches it to the CSn path for CC1101 use. See facts.md + docs/drivers/lora.md + docs/drivers/radio.md.** |
+| `PIN_CC1101_CS` | 40 | CC1101 chip-select | Active low; parked HIGH in `board_init()` before any LCD traffic. **GPIO 40 is a shared line by design: through the IC113 mux (`SN74LVC1G3157`, S = `LoRA_1101_SEL = NOR(V1_1, V2_1)`) it reaches either `SCREEN_CS1` (shared LCD/CC1101 CSn) or `LoRA_PB7` (WIO UART RX); the default firmware drives it as the WIO UART TX, and the sub-GHz arbiter switches it to the CSn path for CC1101 use. See facts.md + docs/drivers/lora.md + docs/drivers/radio.md.** |
 | `PIN_CC1101_MISO` | 8 | CC1101 MISO | == `PIN_LCD_DC`; an OUTPUT (DC) for the LCD, must mux to SPI1 RX (input) around CC1101 access |
 | `PIN_CC1101_GDO0` | 32 | CC1101 live data / sync | PIO2-sampled edge capture (`gdo_capture`) |
 | `PIN_CC1101_GDO2` | 37 | CC1101 GDO2 | Unused |
@@ -50,8 +48,7 @@ FT6336U on I2C1 (no dedicated GPIO of its own beyond SDA/SCL), WS2812 on
 These peripherals exist on the board but have no driver in this repo yet
 (see `docs/hardware/catalog.md` for harvest plans). GPIOs are as documented
 in `FwDisplayVibe.md`; **cross-check against `bsp/platform/board.h` again
-once each one gets a driver** — do not assume `FwDisplayVibe.md` is exact
-(it undercounts the WS2812 LEDs; see facts.md).
+once each one gets a driver** — do not assume `FwDisplayVibe.md` is exact.
 
 | Signal | GPIO | Peripheral | Driver status |
 |---|---|---|---|
@@ -93,7 +90,7 @@ Driven by the **default** FreeWili 2 firmware's display image (see
 | Signal | GPIO | Peripheral | Notes |
 |---|---|---|---|
 | WIO-E5 UART TX | 40 | LoRa bridge (DISPLAY PIO UART @ 115200) | == `PIN_CC1101_CS`; BSP parks it HIGH, default firmware drives it as WIO TX; reaches module PB7 (USART1 RX) via IC113 mux B2 (`LoRA_PB7`) |
-| WIO-E5 UART RX | 23 | LoRa bridge (DISPLAY PIO UART @ 115200) | Net `LoRA_SPI_CS` → module PB6 (USART1 TX); the pin `FwDisplayVibe.md` misreported as the CC1101 CS |
+| WIO-E5 UART RX | 23 | LoRa bridge (DISPLAY PIO UART @ 115200) | Net `LoRA_SPI_CS` → module PB6 (USART1 TX) |
 | ESP32 link | 32–35 | ESP32-C5 Bottlenose PIO-UART (runtime UART: TX 32/34, RX 33/35) | MAIN-side; see pio-allocation in the firmware repo |
 
 ## Cross-reference
