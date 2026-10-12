@@ -32,8 +32,15 @@ def main() -> int:
         "main": PSRAM,
         "fw2_psram_bootstrap": SRAM,
         "board_init_psram": SRAM,
+        # Everything board_init_psram() runs between raising clk_sys and
+        # re-timing PSRAM, including the libgcc 64-bit division it reaches.
+        "vreg_set_voltage": SRAM,
         "set_sys_clock_pll": SRAM,
+        "clock_configure": SRAM,
+        "psram_configure_params": SRAM,
         "psram_reinitialize": SRAM,
+        "__aeabi_uldivmod": SRAM,
+        "__udivmoddi4": SRAM,
         "__StackTop": SRAM,
     }
     for name, region in expected.items():
