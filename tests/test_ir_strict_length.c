@@ -1,7 +1,9 @@
-// A capture ends when a gap closes it, so a decoded frame has exactly the
-// edge count its protocol defines. Anything longer is a second burst, an echo
-// or line noise sharing the capture, and decoding the prefix anyway reports a
-// clean result for a frame that was never clean.
+// A decoded frame has exactly the edge count its protocol defines. Anything
+// longer is extra bits, an echo or line noise sharing the capture, and decoding
+// the prefix anyway reports a clean result for a frame that was never clean.
+// The one exception: the space right after the stop mark is an inter-frame gap
+// (>= 5 ms), as when a held key repeats less than IR_GAP_US apart and the
+// capture holds both frames. The first frame then decodes.
 #include "test_util.h"
 #include "ir_synth.h"
 #include "ir_decode.h"
@@ -31,6 +33,20 @@ static void reject_trailing(decoder_fn decode, ir_message_t in,
 
     // Losing the stop mark is still a short frame.
     ASSERT_TRUE(!decode(t, n - 1, &m));
+
+    // A 4 ms space is not an inter-frame gap: still rejected.
+    t[n] = 4000; t[n + 1] = 560;
+    ASSERT_TRUE(!decode(t, n + 2, &m));
+
+    // The frame repeated after an 8 ms gap in the same capture decodes.
+    uint32_t r[IR_MAX_TIMINGS];
+    uint32_t one = ir_encode(&in, r, IR_MAX_TIMINGS);
+    r[one] = 8000;
+    for (uint32_t i = 0; i < one; i++) r[one + 1 + i] = r[i];
+    ASSERT_TRUE(decode(r, 2 * one + 1, &m));
+    ASSERT_EQ(m.protocol, in.protocol);
+    ASSERT_EQ(m.address, in.address);
+    ASSERT_EQ(m.command, in.command);
 }
 
 int main(void) {
