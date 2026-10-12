@@ -26,7 +26,7 @@ The backlight is controlled by gpio 25.
 
 The LCD SPI bus is shared with CC1101 radio. Its chip select is on GPIO 23 . GDO is connected to pin32. GDO2 is connected to GPIO37.  MISO from CC1101 is connected to the LCD_DC_D GPIO 8.
 
-There is a haptic motor present on gpio 46.
+There is a haptic motor present on gpio 35.
 
 It has an I2C interface connected to GPIO 26 (SDA) and GPIO 27 (SCL).  I2C module 1.
 
