@@ -104,7 +104,8 @@ recommended convention.
 test on a physical board (most recently `hello_ir`'s TX→RX loopback and
 `hello_usbdrive`'s thumb-drive mount, 2026-07-06), and the two-CPU demo
 `apps/dualcpu` has run against its ESP32 half over peer streams
-(2026-09-28). The host test tree is at 26 green binaries. `docs/hardware/facts.md` records the hard-won invariants
+(2026-09-28). `fw test` runs the host test tree green.
+`docs/hardware/facts.md` records the hard-won invariants
 — shared SPI1 arbitration, shared DMA_IRQ_0 ownership, pio2 cohabitation
 (radio GDO capture + IR, radio inits first), the power-gated rails on the
 PCAL6524 I/O expander — and keeps claims scoped to what a bench session

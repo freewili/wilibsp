@@ -2,6 +2,18 @@
 #include "ir_decode.h"
 #include "ir_protocols.h"
 
+// A data frame has exactly the edge count its protocol defines. A longer
+// capture is accepted only when the space right after the frame's stop mark
+// is an inter-frame gap: some remotes (RCA among them) repeat a held key less
+// than IR_GAP_US apart, so the capture holds the frame and its repeat. Any
+// shorter space means extra bits or noise glued to the frame, which is
+// rejected (a 48-bit NEC-timed frame must not decode as NECext).
+#define IR_TRAIL_GAP_MIN_US 5000u
+
+static bool frame_len_ok(const uint32_t *t, uint32_t n, uint32_t len) {
+    return n == len || (n > len && t[len] >= IR_TRAIL_GAP_MIN_US);
+}
+
 // Pulse-distance bits: constant mark, space width selects the bit.
 // Consumes exactly 2*n_bits entries starting at t[0] (a mark).
 // Checks the wider space first: tolerance bands can overlap at the margin,
@@ -49,7 +61,7 @@ bool ir_decode_nec(const uint32_t *t, uint32_t n, ir_message_t *out) {
         out->repeat = true;
         return true;
     }
-    if (n < 67) return false;
+    if (!frame_len_ok(t, n, 67)) return false;
     if (!ir_match_us(t[0], 9000) || !ir_match_us(t[1], 4500)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 32, 560, 560, 1690, true, &v)) return false;
@@ -69,7 +81,7 @@ bool ir_decode_nec(const uint32_t *t, uint32_t n, ir_message_t *out) {
 }
 
 bool ir_decode_samsung32(const uint32_t *t, uint32_t n, ir_message_t *out) {
-    if (n < 67) return false;
+    if (!frame_len_ok(t, n, 67)) return false;
     if (!ir_match_us(t[0], 4500) || !ir_match_us(t[1], 4500)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 32, 550, 550, 1650, true, &v)) return false;
@@ -102,7 +114,7 @@ bool ir_decode_sirc(const uint32_t *t, uint32_t n, ir_message_t *out) {
 }
 
 bool ir_decode_rca(const uint32_t *t, uint32_t n, ir_message_t *out) {
-    if (n < 51) return false;
+    if (!frame_len_ok(t, n, 51)) return false;
     if (!ir_match_us(t[0], 4000) || !ir_match_us(t[1], 4000)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 24, 500, 1000, 2000, false, &v)) return false;  // MSB-first
@@ -204,7 +216,7 @@ bool ir_decode_rc6(const uint32_t *t, uint32_t n, ir_message_t *out) {
 }
 
 bool ir_decode_kaseikyo(const uint32_t *t, uint32_t n, ir_message_t *out) {
-    if (n < 99) return false;
+    if (!frame_len_ok(t, n, 99)) return false;
     if (!ir_match_us(t[0], 3456) || !ir_match_us(t[1], 1728)) return false;
     uint64_t v;
     if (!pd_bits(t + 2, n - 2, 48, 432, 432, 1296, true, &v)) return false;

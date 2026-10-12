@@ -5,7 +5,7 @@ import re
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-PUBLIC_ROOTS = ("README.md", "docs", "apps", "libs")
+PUBLIC_ROOTS = ("README.md", "docs", "apps", "libs", "skills")
 FORBIDDEN = (
     (re.compile(r"freewili-firmware", re.IGNORECASE), "private repository name"),
     (re.compile(r"\bfreewilimain\b", re.IGNORECASE), "private source tree"),
