@@ -372,6 +372,13 @@ voltage was **not** measured, and `VREF_EXT_PIN` read ~4.81 V with nothing
 connected to the external pin — unexplained. Full record:
 `docs/superpowers/findings/2026-07-26-gpio-vref-e2e.md`.
 
+**`picpwr` rail changes with the CM0 running passed on 2026-10-12**: every
+frame now repeats the live `WIO_RST` and `CM0_RUNPG` levels, and an app that
+switched the audio rail off, on and off left a running CM0 up (uptime
+unbroken, `CM0_RUNPG` high in every status frame). Before the fix one release
+frame reset the CM0. Full record:
+`docs/superpowers/findings/2026-10-12-picpwr-control-lines-e2e.md`.
+
 ## Header GPIO is silently dead without a VIO rail
 
 The user GPIO header is level shifted; the shifters need a reference voltage

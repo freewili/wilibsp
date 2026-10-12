@@ -4,10 +4,11 @@
 size_t picpwr_frame_build(uint8_t out[PICPWR_FRAME_LEN],
                           const picpwr_cfg_t *cfg)
 {
-    /* Mask bits above zone 17 are reserved and must be zero on the wire
-     * (docs/drivers/power.md). Enforced here so no caller can emit
-     * them. */
-    uint32_t awake = cfg->awake & PICPWR_ZONE_MASK_ALL;
+    /* Rails come from the masks, control lines only from cfg->lines; zone
+     * 20 and everything above it is always zero on the wire
+     * (docs/drivers/power.md). */
+    uint32_t awake = (cfg->awake & PICPWR_ZONE_MASK_ALL)
+                   | (cfg->lines & PICPWR_LINE_MASK);
     uint32_t sleep = cfg->sleep & PICPWR_ZONE_MASK_ALL;
     out[0]  = 0xB0;                              /* command sync */
     out[1]  = 0x00;                              /* power-zone id */
@@ -43,5 +44,13 @@ uint32_t picpwr_rails_decode(const uint8_t payload[20])
     for (int z = 0; z < 17; z++)
         if (payload[RAILS[z].byte] & RAILS[z].mask)
             bits |= 1u << z;
+    return bits;
+}
+
+uint32_t picpwr_lines_decode(const uint8_t payload[20])
+{
+    uint32_t bits = 0;
+    if (payload[6] & 0x08) bits |= picpwr_zone_bit(PICPWR_LINE_WIO_RST);
+    if (payload[7] & 0x01) bits |= picpwr_zone_bit(PICPWR_LINE_CM0_RUNPG);
     return bits;
 }

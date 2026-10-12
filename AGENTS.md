@@ -378,8 +378,11 @@ Rules that cost real bench time:
   a rail apply if the bus was live during it).
 - Read the zone map before switching anything **off** — some zones blank
   the display, drop your debug probe, or risk filesystem corruption.
-- Never set mask bits above zone 17; the API strips them (they are
-  reserved — `docs/drivers/power.md`).
+- Mask bits above zone 17 are board control lines (`WIO_RST`,
+  `CM0_RUNPG`), not rails. The API strips them from your masks and puts
+  their live levels in every frame, so a rail change never resets a
+  running compute module or LoRa module. Do not build frames by hand
+  (`docs/drivers/power.md`).
 
 ## "GPIO" is ambiguous on this board — ASK which one
 

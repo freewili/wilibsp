@@ -52,14 +52,16 @@ bool picpwr_send(const picpwr_cfg_t *cfg)
         absolute_time_diff_us(s_last_send, get_absolute_time())
             < (int64_t)PICPWR_SPACING_MS * 1000)
         return false;
-    /* Clamp to the rail range no matter what the caller passed: the
-     * reserved bits are not part of this API's contract in either
-     * direction. One of the status indications for those lines also
-     * reads back high while the correct commanded value is 0, so any
-     * requested-vs-actual comparison must use the same clamp. */
+    /* Every frame drives the control lines too, so it must repeat their
+     * live levels: sending them low resets a running compute module and
+     * the LoRa module. No status frame yet means no known levels, so
+     * nothing is sent. Rails stay clamped to zones 1..17. */
+    uint8_t payload[20];
+    if (!uartkbd_status_raw(payload)) return false;
     picpwr_cfg_t clamped = *cfg;
     clamped.awake &= PICPWR_ZONE_MASK_ALL;
     clamped.sleep &= PICPWR_ZONE_MASK_ALL;
+    clamped.lines = picpwr_lines_decode(payload);
     uint8_t frame[PICPWR_FRAME_LEN];
     picpwr_frame_build(frame, &clamped);
     (void)uartkbd_cmd_send(frame, sizeof frame);
