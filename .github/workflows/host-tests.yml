@@ -5,8 +5,15 @@ name: host tests
 # stand in for flashing an app and looking at the panel.
 on:
   push:
-    branches: ["**"]
+    branches: [master]   # pull requests are covered below; no double run
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   host-tests:

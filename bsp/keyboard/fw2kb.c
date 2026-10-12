@@ -147,8 +147,8 @@ bool fw2kb_chord_for(const fw2kb_t *kb, char ch, fw2kb_btn *out, int *n)
         tmp.group_state = true;
     }
 
-    /* Try the current page, then each page reachable by cycling. Six hops is
-     * more than any mode needs (MODE_ALL reaches three pages), and revisiting
+    /* Try the current page, then each page reachable by cycling. Six pages
+     * (the current one plus five hops) is more than any mode needs (MODE_ALL reaches three pages), and revisiting
      * a page is harmless because the first match wins. */
     for (int hop = 0; hop <= 5; hop++) {
         for (int g = 0; g < 5; g++) {

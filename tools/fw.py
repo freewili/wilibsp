@@ -47,8 +47,7 @@ PT_LOAD = 1
 # block that declares a family and names a different one was built for another
 # chip. The address windows alone do not catch that: RP2040 SRAM also starts at
 # 0x20000000, so its blocks land inside the SRAM app window.
-UF2_FLAG_FAMILY_ID = 0x00002000
-RP2350_ARM_S_FAMILY_ID = 0xE48BFF59
+from make_app_uf2 import UF2_FLAG_FAMILY_ID, RP2350_ARM_S_FAMILY_ID
 
 def check_app_uf2(path):
     """Fail closed unless every UF2 payload targets DISPLAY SRAM or PSRAM."""

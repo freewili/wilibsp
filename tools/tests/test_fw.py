@@ -13,7 +13,7 @@ class FakeSerial:
     def write(self, data): self.writes.append(data)
     def readline(self): return next(self.replies, b"")
 
-def app_uf2(address=0x11000000, block_no=0, num_blocks=1, flags=0,
+def app_uf2(address=0x11000000, block_no=0, num_blocks=1, flags=0x2000,
             family=0xE48BFF59):
     import struct
     data = bytearray(512)

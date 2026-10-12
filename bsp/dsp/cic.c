@@ -12,7 +12,7 @@ void cic_init(cic_t* c) {
 }
 
 int cic_push_bit(cic_t* c, int bit, int16_t* out) {
-    uint32_t x = bit ? 1u : UINT32_MAX;   // map PDM {0,1} -> {+1,-1}
+    uint32_t x = bit ? 1u : UINT32_MAX;   // map PDM bit 1 -> +1, bit 0 -> -1
     // Integrator cascade (runs at full PDM rate). A steady input drives these
     // past the end of their range within seconds; unsigned makes that wrap
     // defined rather than undefined.

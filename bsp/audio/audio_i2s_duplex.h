@@ -31,8 +31,8 @@ void audio_i2s_duplex_play_loop(const uint32_t *buf, uint frames);
 // not have to be ring-aligned. `frames` MUST be a non-zero multiple of 8192 and
 // at least 16384: the second DMA channel is armed one chunk in, and the refill
 // advances by whole chunks modulo `frames`. A shorter or unaligned length points
-// a chunk-sized read past the end of the buffer, and zero divides by zero in the
-// refill. Callers pad up to that today (see apps/retrochat/audio_glue.c).
+// a chunk-sized read past the end of the buffer, and zero divides by zero
+// (`frames` is a modulus). Callers pad up to that today (see apps/retrochat/audio_glue.c).
 void audio_i2s_duplex_play_stream_loop(const uint32_t *buf, uint frames);
 
 // Stop playback: abort the TX DMA and clear the TX FIFO (DAC mid-scale silence).
