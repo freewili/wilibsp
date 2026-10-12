@@ -17,9 +17,13 @@
  * write — the device has no partial form and no readback of the sleep or
  * wake fields, so callers must always provide complete values. Any zone
  * bit left clear in awake switches that rail OFF. Only zones 1..17 are
- * expressible: mask bits above that are reserved-zero and this API
- * clamps them out of every frame it sends (docs/drivers/power.md).
- * Rate-limited: returns false without sending
+ * expressible in awake and sleep; bits above that are clamped out. The
+ * control lines (WIO_RST, CM0_RUNPG) ride in the same field, and every
+ * frame drives them, so this call replaces cfg->lines with their last
+ * reported levels (picpwr_lines_carry(): high in either of the last two
+ * status frames; CM0_RUNPG only while zone 17 stays on)
+ * (docs/drivers/power.md). Returns false without sending until a status
+ * frame has arrived. Rate-limited: returns false without sending
  * while a previous command's rail walk (~1 s, blocking on the device
  * side) may still be running — retry later. The cfg is cached and seeds
  * picpwr_ensure_awake(). */
@@ -37,7 +41,8 @@ bool picpwr_rails(uint32_t *rails_out);
  * from LIVE rail state (never the cache), requiring two agreeing reads so
  * an unsettled first frame cannot drop rails it failed to report; ORs in
  * zone_bits; carries the cached sleep/wake fields. Comparisons and the
- * sent mask cover zones 1..17 only — reserved bits are always zero.
+ * sent mask cover zones 1..17 only; the control lines keep their live
+ * levels (picpwr_send()).
  * Returns true immediately when the rails already read as on; false when
  * stable live state is unavailable or the rate limit is active (retry
  * later). */

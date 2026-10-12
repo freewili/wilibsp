@@ -82,10 +82,12 @@ Worked example — zones 1–17 on, sleep/wake zeroed:
 B0 00 01 FF FF 00 00 00 00 00 AF
 ```
 
-(Checksum: the byte sum is 0x2AF; truncated to 8 bits = 0xAF.) Note the
-reserved bits above zone 17 are zero — that is the required form, not a
-simplification. Suitable as a smoke test only because it zeroes the sleep
-configuration.
+(Checksum: the byte sum is 0x2AF; truncated to 8 bits = 0xAF.) The
+control-line bits above zone 17 are zero, so this frame drives
+`CM0_RUNPG` low: **sent while a compute module runs, it resets it** (see
+"Zone mask encoding"). It also zeroes the sleep configuration. Use it as
+a smoke test only with the compute module off; a real frame repeats the
+live line levels.
 
 ## Zone mask encoding
 
@@ -93,13 +95,27 @@ configuration.
 zone 1 is bit 0 of the **last** byte and zone 17 is bit 0 of the first.
 
 - Zones 1–17 are switched rails (zone 9 excepted — a flag, see the map).
-- Bits above zone 17 are **RESERVED — MUST BE ZERO.** They reach board
-  control lines rather than switched rails, are not safely
-  software-controllable on current hardware revisions, and zero matches
-  the boot state. They are deliberately **not** exposed by the `picpwr`
-  API — it clamps every outgoing mask to zones 1–17. If software control
-  of one is ever needed it must be a separate, explicitly documented,
-  opt-in call gated on a board revision that supports it.
+- Zones 18–20 of the awake mask are **board control lines**, not rails:
+  18 `WIO_RST` (PIC `RG3`; the LoRa module reset on rev 1 boards only, see
+  `docs/drivers/lora.md`), 19 `CM0_RUNPG` (compute module run, low holds
+  it in reset) and 20 `MAIN_PWR_RST`. The device drives lines 18 and 19
+  to their bits in every frame it applies, so **a frame must repeat their
+  current levels**: a zero in 19 resets a running compute module even
+  when the frame only meant to move one rail. MAIN raises `CM0_RUNPG`
+  when it starts Linux, so after that zero is wrong. Zone 20 is set high
+  by the coprocessor's own boot code and never written by the rail walk;
+  it goes out as zero, as does everything above it.
+- `picpwr_send()` fills both levels in itself (`picpwr_cfg_t.lines`) and
+  sends nothing until a status frame has arrived. A line read high in
+  either of the last two status frames is sent high, so a one-frame dip
+  cannot reset a part, and `CM0_RUNPG` is sent high only while the same
+  frame keeps zone 17 on (`picpwr_lines_carry()`). Apps never set the
+  lines: the awake and sleep masks are still clamped to zones 1–17, and
+  the sleep mask never carries a line.
+- Not yet established: whether the `CM0_RUNPG` readback is the PIC's
+  output latch or the shared run/power-good net (which the module itself
+  can pull low, for example while Linux reboots). The two-frame rule
+  covers a short dip; a longer one would be copied into the next frame.
 
 ## Zone map
 
@@ -121,7 +137,7 @@ zone 1 is bit 0 of the **last** byte and zone 17 is bit 0 of the first.
 | 14 | USB-serial bridge | with USB cable | Managed automatically on cable attach/detach |
 | 15 | CAN controller + transceiver | no | — |
 | 16 | On-board debug probe | with USB cable | Off mid-session = you lose your debugger. Managed automatically on cable attach/detach |
-| 17 | Compute module + its microSD | no | **Not usable through this interface**: its run/enable line is a reserved control bit (held clear). No safe-shutdown path exists — never cut power to a running module |
+| 17 | Compute module + its microSD | no | **Not switched by apps**: MAIN powers it and raises its run line (`CM0_RUNPG`, zone 19); `picpwr` repeats that line's reported level in every frame so an app's rail changes leave a running module alone. No safe-shutdown path exists — never cut power to a running module |
 
 Notes on the map:
 
@@ -162,11 +178,13 @@ payload, high = powered:
 | 9 | 5 | 0x04 | | | | |
 
 Byte indices are into the 20-byte payload (frame bytes 2–21). The status
-frame also carries indications for the reserved control lines (byte 6
-`0x08`, byte 7 `0x01`, byte 5 `0x80`). **Exclude them — and everything
-above zone 17 — from any requested-vs-actual comparison**: one of those
-pins is set high by the coprocessor's own boot code but never written by
-the rail walk, so a command correctly sending 0 reads back 1 forever. A
+frame also carries the control-line levels: `WIO_RST` byte 6 `0x08`,
+`CM0_RUNPG` byte 7 `0x01`, `MAIN_PWR_RST` byte 5 `0x80`
+(`picpwr_lines_decode()` reads the first two). **Exclude all three — and
+everything above zone 17 — from any requested-vs-actual comparison**:
+`MAIN_PWR_RST` is set high by the coprocessor's own boot code but never
+written by the rail walk, so a command correctly sending 0 reads back 1
+forever. A
 comparison that includes it mismatches permanently and, if wired to a
 debounced re-assert, thrashes the link with rail walks. Compare zones
 1–17 only.

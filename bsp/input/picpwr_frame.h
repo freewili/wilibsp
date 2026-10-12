@@ -31,26 +31,40 @@
 #define PICPWR_ZONE_USB_SERIAL  14  /* USB-serial bridge (device-managed) */
 #define PICPWR_ZONE_CAN         15  /* CAN controller + transceiver */
 #define PICPWR_ZONE_DEBUG_PROBE 16  /* on-board debug probe */
-#define PICPWR_ZONE_COMPUTE     17  /* compute module — not usable here (docs) */
+#define PICPWR_ZONE_COMPUTE     17  /* compute module — MAIN powers it; apps leave it alone (docs) */
 
-/* Every expressible zone (1..17). Mask bits above this are RESERVED —
- * MUST BE ZERO (docs/drivers/power.md). picpwr_frame_build() clears
- * them from every frame; nothing in this API can set them. */
+/* Every switchable zone (1..17). Mask bits 18-20 of the same wire field
+ * are not rails but board control lines (docs/drivers/power.md); an
+ * app never sets them through awake/sleep. */
 #define PICPWR_ZONE_MASK_ALL 0x01FFFFu
+
+/* Control lines in the awake field, addressed like zones. The device
+ * drives lines 18 and 19 to their bits in each frame it applies, so a
+ * frame must repeat their current levels or it moves them:
+ *   18 WIO_RST   — PIC RG3; the LoRa module reset on rev 1 boards only
+ *   19 CM0_RUNPG — compute module run (low holds it in reset)
+ * Zone 20 (MAIN_PWR_RST) is not written by the rail walk and is always
+ * sent as zero. */
+#define PICPWR_LINE_WIO_RST   18
+#define PICPWR_LINE_CM0_RUNPG 19
+#define PICPWR_LINE_MASK      0x060000u
 
 static inline uint32_t picpwr_zone_bit(int zone) {
     return 1u << (zone - 1);
 }
 
-/* Full power configuration: one atomic write of all four fields. The
- * device offers no readback of sleep/wake — callers must send complete
- * values every time (see docs/drivers/power.md). Mask bits above zone 17
- * are reserved-zero and stripped at serialization. */
+/* Full power configuration: one atomic write of all fields. The device
+ * offers no readback of sleep/wake — callers must send complete values
+ * every time (see docs/drivers/power.md). awake and sleep carry zones
+ * 1..17 only; lines carries the control-line levels (PICPWR_LINE_MASK
+ * bits) placed in the awake field. picpwr_send() fills lines from live
+ * status, so a caller's value never reaches the wire through it. */
 typedef struct {
     uint32_t awake;   /* 24-bit zone mask: rails enabled while awake */
     uint32_t sleep;   /* 24-bit zone mask: rails kept through sleep */
     uint8_t  wake;    /* wake-source field */
     uint8_t  wake2;   /* wake-source overflow field */
+    uint32_t lines;   /* control lines 18-19 (PICPWR_LINE_MASK), high = released */
 } picpwr_cfg_t;
 
 /* Serialize a power-zone command frame into out[PICPWR_FRAME_LEN].
@@ -62,6 +76,26 @@ size_t picpwr_frame_build(uint8_t out[PICPWR_FRAME_LEN],
  * coprocessor status payload (the bytes between sync/id and checksum).
  * High = rail powered. */
 uint32_t picpwr_rails_decode(const uint8_t payload[20]);
+
+/* Decode the live control-line levels (zones 18 and 19 -> bits 17 and 18,
+ * high = released) from the same status payload. Zone 20 is not
+ * decoded: its readback stays high while the correct command is zero. */
+uint32_t picpwr_lines_decode(const uint8_t payload[20]);
+
+/* Control-line levels for the next frame, from the last two distinct
+ * status frames (prev, cur) and the awake mask being sent. A line read
+ * high in either frame is kept high: a spurious high leaves a line where
+ * MAIN put it, while a spurious low (a glitch, or the module's own
+ * run/power-good net dipping) would reset the part. CM0_RUNPG is only
+ * carried high while the same frame keeps zone 17 on, so a frame never
+ * drives the run line into an unpowered module. */
+static inline uint32_t picpwr_lines_carry(uint32_t prev, uint32_t cur,
+                                          uint32_t awake) {
+    uint32_t lines = (prev | cur) & PICPWR_LINE_MASK;
+    if (!(awake & picpwr_zone_bit(PICPWR_ZONE_COMPUTE)))
+        lines &= ~picpwr_zone_bit(PICPWR_LINE_CM0_RUNPG);
+    return lines;
+}
 
 /* Awake mask for re-asserting rails after a kept rail reads off.
  *
