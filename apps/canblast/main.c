@@ -553,7 +553,6 @@ static void key_label(int slot, uint16_t bg, uint16_t fg, const char* label) {
 
 static void screen_static(void) {
     memset(shown, 0, sizeof shown);
-    st7796_fill_screen(C_BLACK);
     line_at(0, 4, 2, C_WHITE, "CAN BLAST  onewili display link");
     line_at(9, 256, 1, C_GREY, "HOLD HOME 5S TO EXIT");
     key_label(1, C_KEY_YELLOW, C_BLACK, "STREAM");
@@ -632,13 +631,13 @@ int main(void) {
     st7796_init();
     fw2_app_about_use_lcd();
     agentio_init();                 /* before the first clear: it owns the shadow framebuffer */
+    st7796_fill_screen(C_BLACK);    /* the whole panel, before the backlight */
     screen_static();
     board_backlight_set(1);
     line_at(1, 34, 3, C_YEL, "CAN rail...");
 
-    /* The CAN controller sits on power zone 15; a standalone display app owns
-     * its power policy. picpwr_task() re-asserts the rail if it drops. */
-    picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_CAN));
+    /* The CAN controller sits on power zone 15, declared in POWER_ZONES:
+     * fw2_app_recovery_init() raised it and picpwr_task() re-asserts it. */
 #ifndef CANBLAST_POWER_BASELINE
     /* ...and drop the rails inherited from the stock firmware that this app
      * has no use for (the audio codec above all); picpwr_task() carries it
@@ -650,7 +649,7 @@ int main(void) {
         fw2_app_recovery_task();
         picpwr_task();
         if (picpwr_rails(&rails_live)) rails_valid = 1;
-        sleep_ms(10);
+        fw2_app_recovery_sleep_ms(10);
     }
     DIAG("canblast: rails valid=%d mask=%x\n", rails_valid, (unsigned)rails_live);
 
