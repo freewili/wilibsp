@@ -44,7 +44,7 @@ static void test_frame_reserved_bits_stripped(void)
     ASSERT_EQ(out[2], 0x01);   /* awake byte 0: only zone 17 survives */
     ASSERT_EQ(out[3], 0xFF);
     ASSERT_EQ(out[4], 0xFF);
-    ASSERT_EQ(out[5], 0x00);   /* sleep byte 0: reserved-only mask -> 0 */
+    ASSERT_EQ(out[5], 0x00);   /* sleep byte 0: above-zone-17-only mask -> 0 */
     ASSERT_EQ(out[6], 0x00);
     ASSERT_EQ(out[7], 0x00);
     ASSERT_EQ(PICPWR_ZONE_MASK_ALL, 0x01FFFFu);
@@ -72,10 +72,32 @@ static void test_frame_control_lines(void)
     ASSERT_EQ(out[2], 0x06);
     ASSERT_EQ(out[5], 0x00);   /* sleep untouched by lines */
 
+    uint8_t sum = 0;           /* checksum covers the lines */
+    for (int i = 0; i < PICPWR_FRAME_LEN - 1; i++)
+        sum = (uint8_t)(sum + out[i]);
+    ASSERT_EQ(out[PICPWR_FRAME_LEN - 1], sum);
+
     cfg.lines = 0;             /* both lines low: nothing above zone 17 */
     cfg.awake = 0xFFFFFFu;
     picpwr_frame_build(out, &cfg);
     ASSERT_EQ(out[2], 0x01);
+}
+
+/* The levels carried into a frame: high in either of the last two status
+ * frames stays high (a one-frame dip never resets a part), and CM0_RUNPG
+ * is dropped whenever the frame does not keep zone 17 on. */
+static void test_lines_carry(void)
+{
+    const uint32_t wio = picpwr_zone_bit(PICPWR_LINE_WIO_RST);
+    const uint32_t run = picpwr_zone_bit(PICPWR_LINE_CM0_RUNPG);
+    const uint32_t cm0 = picpwr_zone_bit(PICPWR_ZONE_COMPUTE);
+    ASSERT_EQ(picpwr_lines_carry(run, run, cm0), run);
+    ASSERT_EQ(picpwr_lines_carry(run, 0, cm0), run);      /* dip in the latest frame */
+    ASSERT_EQ(picpwr_lines_carry(0, run, cm0), run);
+    ASSERT_EQ(picpwr_lines_carry(0, 0, cm0), 0);          /* low in both: stays low */
+    ASSERT_EQ(picpwr_lines_carry(run | wio, run | wio, 0), wio);   /* zone 17 off */
+    ASSERT_EQ(picpwr_lines_carry(wio, 0, 0), wio);
+    ASSERT_EQ(picpwr_lines_carry(0xFFFFFFu, 0, PICPWR_ZONE_MASK_ALL), PICPWR_LINE_MASK);
 }
 
 /* Control-line extraction: WIO_RST is payload[6] & 0x08, CM0_RUNPG is
@@ -156,8 +178,8 @@ static void test_reassert_is_superset(void)
     ASSERT_EQ(r & probe, probe);
     ASSERT_EQ(r & audio, audio);
 
-    /* Reserved bits above zone 17 never survive, whichever input
-     * carried them. */
+    /* Bits above zone 17 never survive, whichever input carried
+     * them. */
     ASSERT_EQ(picpwr_reassert_awake(0xFE0000u, 0, audio), audio);
     ASSERT_EQ(picpwr_reassert_awake(0, 0xFE0000u, audio), audio);
     ASSERT_EQ(picpwr_reassert_awake(0, 0, 0xFE0000u | audio), audio);
@@ -192,7 +214,7 @@ static void test_release_clears_only_the_released(void)
     /* Releasing a rail that is already off changes nothing else. */
     ASSERT_EQ(picpwr_release_awake(disp | probe, 0, audio), disp | probe);
 
-    /* Reserved bits never survive. */
+    /* Bits above zone 17 never survive. */
     ASSERT_EQ(picpwr_release_awake(0xFFFFFFu, 0, audio),
               PICPWR_ZONE_MASK_ALL & ~audio);
 }
@@ -215,6 +237,7 @@ int main(void)
     test_frame_reserved_bits_stripped();
     test_frame_control_lines();
     test_lines_decode();
+    test_lines_carry();
     test_zone_bits();
     test_rails_decode();
     test_reassert_is_superset();

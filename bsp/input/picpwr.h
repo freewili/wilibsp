@@ -19,8 +19,9 @@
  * bit left clear in awake switches that rail OFF. Only zones 1..17 are
  * expressible in awake and sleep; bits above that are clamped out. The
  * control lines (WIO_RST, CM0_RUNPG) ride in the same field, and every
- * frame drives them, so this call replaces cfg->lines with their live
- * levels from the last status frame and never moves them
+ * frame drives them, so this call replaces cfg->lines with their last
+ * reported levels (picpwr_lines_carry(): high in either of the last two
+ * status frames; CM0_RUNPG only while zone 17 stays on)
  * (docs/drivers/power.md). Returns false without sending until a status
  * frame has arrived. Rate-limited: returns false without sending
  * while a previous command's rail walk (~1 s, blocking on the device

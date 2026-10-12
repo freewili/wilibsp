@@ -15,6 +15,29 @@ static picpwr_cfg_t    s_cache;
 static absolute_time_t s_last_send;
 static bool            s_sent_any;
 
+/* Control-line levels from the last two distinct status frames, for
+ * picpwr_lines_carry(). Sampled by picpwr_task() on every frame and again
+ * by picpwr_send(). False until a status frame has arrived. */
+static uint32_t s_lines_prev, s_lines_cur, s_lines_frame;
+static bool     s_lines_have;
+
+static bool lines_sample(void)
+{
+    uint8_t payload[20];
+    if (!uartkbd_status_raw(payload)) return false;
+    uint32_t frame = uartkbd_frames();
+    uint32_t lines = picpwr_lines_decode(payload);
+    if (!s_lines_have) {
+        s_lines_prev = s_lines_cur = lines;
+        s_lines_have = true;
+    } else if (frame != s_lines_frame) {
+        s_lines_prev = s_lines_cur;
+        s_lines_cur = lines;
+    }
+    s_lines_frame = frame;
+    return true;
+}
+
 bool picpwr_rails(uint32_t *rails_out)
 {
     uint8_t payload[20];
@@ -53,15 +76,14 @@ bool picpwr_send(const picpwr_cfg_t *cfg)
             < (int64_t)PICPWR_SPACING_MS * 1000)
         return false;
     /* Every frame drives the control lines too, so it must repeat their
-     * live levels: sending them low resets a running compute module and
-     * the LoRa module. No status frame yet means no known levels, so
-     * nothing is sent. Rails stay clamped to zones 1..17. */
-    uint8_t payload[20];
-    if (!uartkbd_status_raw(payload)) return false;
+     * levels: sending CM0_RUNPG low resets a running compute module. No
+     * status frame yet means no known levels, so nothing is sent. Rails
+     * stay clamped to zones 1..17. */
+    if (!lines_sample()) return false;
     picpwr_cfg_t clamped = *cfg;
     clamped.awake &= PICPWR_ZONE_MASK_ALL;
     clamped.sleep &= PICPWR_ZONE_MASK_ALL;
-    clamped.lines = picpwr_lines_decode(payload);
+    clamped.lines = picpwr_lines_carry(s_lines_prev, s_lines_cur, clamped.awake);
     uint8_t frame[PICPWR_FRAME_LEN];
     picpwr_frame_build(frame, &clamped);
     (void)uartkbd_cmd_send(frame, sizeof frame);
@@ -171,6 +193,7 @@ static void release_service(uint32_t rails, bool rails_settled)
 
 void picpwr_task(void)
 {
+    (void)lines_sample();
     if (s_release) {
         static uint32_t rel_frame, rel_prev;
         static bool     rel_have_prev;

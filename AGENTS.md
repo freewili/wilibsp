@@ -380,8 +380,8 @@ Rules that cost real bench time:
   the display, drop your debug probe, or risk filesystem corruption.
 - Mask bits above zone 17 are board control lines (`WIO_RST`,
   `CM0_RUNPG`), not rails. The API strips them from your masks and puts
-  their live levels in every frame, so a rail change never resets a
-  running compute module or LoRa module. Do not build frames by hand
+  their reported levels in every frame, so a rail change leaves a running
+  compute module alone. Do not build frames by hand
   (`docs/drivers/power.md`).
 
 ## "GPIO" is ambiguous on this board — ASK which one
