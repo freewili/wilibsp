@@ -26,6 +26,7 @@ AGENTIO_CHANNEL = 1
 AGENTIO_MAGIC = b"FW2C"
 AGENTIO_HEADER_LEN = 18
 SD_HANDOFF_SETTLE_SECONDS = 2
+MACOS_VOLUMES = pathlib.Path("/Volumes")
 SURFACES = {"lcd": 0, "dvi": 1}
 # Button indices must match uartkbd_btn_t in bsp/input/uartkbd_parse.h.
 BUTTONS = ["grey", "yellow", "green", "blue", "red", "nav_center", "nav_up",
@@ -213,8 +214,10 @@ def _mounted_volumes():
                 pass
         return mounted
     if sys.platform == "darwin":
-        root = pathlib.Path("/Volumes")
-        return set(root.iterdir()) if root.is_dir() else set()
+        # macOS creates the root-owned mount-point directory before the card is
+        # mounted on it; writing there in that window fails with EACCES.
+        root = MACOS_VOLUMES
+        return {p for p in root.iterdir() if os.path.ismount(p)} if root.is_dir() else set()
     mounts = set()
     try:
         for line in pathlib.Path("/proc/mounts").read_text().splitlines():

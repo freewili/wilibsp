@@ -155,6 +155,16 @@ def test_install_app_rejects_escaping_or_ambiguous_subfolders_before_hardware(tm
         except ValueError:
             pass
 
+def test_macos_volumes_skip_a_mount_point_not_yet_mounted(tmp_path, monkeypatch):
+    mounted, pending = tmp_path / "CARD", tmp_path / "NO NAME"
+    mounted.mkdir()
+    pending.mkdir()   # the directory exists before the card is mounted on it
+    monkeypatch.setattr(fw.sys, "platform", "darwin")
+    monkeypatch.setattr(fw, "MACOS_VOLUMES", tmp_path)
+    monkeypatch.setattr(fw.os.path, "ismount", lambda p: pathlib.Path(p) == mounted)
+
+    assert fw._mounted_volumes() == {mounted}
+
 def test_install_app_returns_sd_when_no_volume_ever_mounted(tmp_path, monkeypatch):
     source = tmp_path / "mesh.uf2"
     source.write_bytes(app_uf2())
