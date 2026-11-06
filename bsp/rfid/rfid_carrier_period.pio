@@ -1,0 +1,35 @@
+; bsp/rfid/rfid_carrier_period.pio — carrier frequency measurement.
+.program rfid_carrier_period
+    wait 0 pin 0
+    wait 1 pin 0
+.wrap_target
+    mov x, ~null
+high_phase:
+    jmp x-- h2
+h2:
+    nop
+    jmp pin high_phase
+low_phase:
+    jmp x-- l2
+l2:
+    jmp pin done
+    jmp low_phase
+done:
+    in x, 32
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+static inline void rfid_carrier_period_program_init(PIO pio, uint sm,
+                                                    uint offset, uint pin) {
+    pio_sm_config c = rfid_carrier_period_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, pin);
+    sm_config_set_jmp_pin(&c, pin);
+    sm_config_set_in_shift(&c, false, true, 32);
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+    sm_config_set_clkdiv(&c, 1.0f);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

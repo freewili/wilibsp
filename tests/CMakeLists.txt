@@ -345,3 +345,11 @@ target_include_directories(test_ft6336_map PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ft6336_map COMMAND test_ft6336_map)
+
+# --- bsp/rfid EM4100 encode/decode ---
+set(BSPRFID ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/rfid)
+add_executable(test_rfid_em4100 test_rfid_em4100.c ${BSPRFID}/rfid_em4100.c)
+target_include_directories(test_rfid_em4100 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME rfid_em4100 COMMAND test_rfid_em4100)

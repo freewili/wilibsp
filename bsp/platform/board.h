@@ -61,6 +61,13 @@
 #define PIN_USB_DP  42   // USB D+
 #define PIN_USB_DM  43   // USB D- (must be D+ + 1 for Pico-PIO-USB)
 
+// --- 125 kHz RFID ---
+#define PIN_RFID_CARRIER      34
+#define PIN_RFID_AUX          35
+#define PIN_RFID_PULL         36
+#define PIN_RFID_CARRIER_MEAS 44
+#define PIN_RFID_COIL_ADC     46
+
 // --- DMA-IRQ ownership model ---
 // DMA_IRQ_0 is a SHARED handler line. The ST7796 display flush registers a
 // shared handler (via irq_add_shared_handler) that acts only on its own DMA
