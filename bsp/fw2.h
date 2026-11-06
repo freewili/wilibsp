@@ -40,6 +40,10 @@
 #include "sensors/bmm350.h"       // (Increment 4: I2C sensors)
 #include "sensors/bmm350_comp.h"  // (Increment 4: I2C sensors)
 
+#include "rfid/rfid.h"
+#include "rfid/rfid_em4100.h"
+#include "rfid/rfid_t5577.h"
+
 #include "ir/ir_capture.h"   // (harvested: IR receiver, PIO2 SM0 + DMA ring, WiliIR)
 #include "ir/ir_tx.h"        // (harvested: IR transmitter, PIO2 SM1 carrier modulator, WiliIR)
 #include "ir/ir_decode.h"    // (harvested: protocol decoders, pure)

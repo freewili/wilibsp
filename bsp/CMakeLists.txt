@@ -48,6 +48,12 @@ add_library(freewili2_bsp STATIC
     ir/db_sort.c
     ir/ir_capture.c
     ir/ir_tx.c
+    rfid/rfid.c
+    rfid/rfid_carrier.c
+    rfid/rfid_capture.c
+    rfid/rfid_demod.c
+    rfid/rfid_em4100.c
+    rfid/rfid_t5577.c
     gfx/palette.c
     keyboard/fw2kb.c
     keyboard/fw2kb_hidmap.c
@@ -138,6 +144,7 @@ pico_generate_pio_header(freewili2_bsp
 # Generate the IR PIO headers into the build tree for ir_capture.c and ir_tx.c.
 pico_generate_pio_header(freewili2_bsp ${CMAKE_CURRENT_SOURCE_DIR}/ir/ir_capture.pio)
 pico_generate_pio_header(freewili2_bsp ${CMAKE_CURRENT_SOURCE_DIR}/ir/ir_tx.pio)
+pico_generate_pio_header(freewili2_bsp ${CMAKE_CURRENT_SOURCE_DIR}/rfid/rfid_carrier_period.pio)
 
 set(FW2_TOOLS_DIR "${CMAKE_CURRENT_LIST_DIR}/../tools" CACHE PATH
     "Directory containing FW2 build validation tools")
