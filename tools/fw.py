@@ -605,7 +605,8 @@ def _host_toolchain_args():
 def test_command():
     tests_dir = REPO_ROOT / "tests"
     build_dir = REPO_ROOT / "build-tests"
-    configure = ["cmake", "-S", str(tests_dir), "-B", str(build_dir)]
+    configure = ["cmake", "-S", str(tests_dir), "-B", str(build_dir),
+                  f"-DPython3_EXECUTABLE={sys.executable}"]
     configure += _host_toolchain_args()
     return [
         configure,
