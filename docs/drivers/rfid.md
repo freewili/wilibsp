@@ -169,4 +169,6 @@ The carrier must be running before calling any T5577 function.
 - `rfid_reader_poll()` returns one tag at a time; the pending tag is cleared after each successful poll.
 - The reader transitions through IDLE → STARTING → READING. Calibration takes roughly 100–200 ms.
 - Call `rfid_reader_stop()` when done to release hardware resources.
+- This driver cannot run in the same app as the WILiRFID library
+  (`bsp/wilirfid`): both use the same RFID board and pins.
 - For custom signal processing, use `rfid_capture_ring()` and `rfid_capture_write_pos()` to access raw samples directly.

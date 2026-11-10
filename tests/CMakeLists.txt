@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(wilibsp_tests C)
+project(wilibsp_tests C CXX)
 set(CMAKE_C_STANDARD 11)
 enable_testing()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -353,3 +353,45 @@ target_include_directories(test_rfid_em4100 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME rfid_em4100 COMMAND test_rfid_em4100)
+
+# --- bsp/wilirfid public header: compiles on its own, every signature as documented,
+# in C and in C++ (the archive is built for the board; the host only checks types) ---
+add_executable(test_wilirfid_header test_wilirfid_header.c)
+target_include_directories(test_wilirfid_header PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_wilirfid_header PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+add_test(NAME wilirfid_header_c COMMAND test_wilirfid_header)
+
+add_executable(test_wilirfid_header_cpp test_wilirfid_header_cpp.cpp)
+set_target_properties(test_wilirfid_header_cpp PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
+target_include_directories(test_wilirfid_header_cpp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_wilirfid_header_cpp PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+add_test(NAME wilirfid_header_cpp COMMAND test_wilirfid_header_cpp)
+
+# --- bsp/wilinfc public header: compiles on its own, every signature as documented,
+# in C and in C++ (the archive is built for the board; the host only checks types) ---
+add_executable(test_wilinfc_header test_wilinfc_header.c)
+target_include_directories(test_wilinfc_header PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_wilinfc_header PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+add_test(NAME wilinfc_header_c COMMAND test_wilinfc_header)
+
+add_executable(test_wilinfc_header_cpp test_wilinfc_header_cpp.cpp)
+set_target_properties(test_wilinfc_header_cpp PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
+target_include_directories(test_wilinfc_header_cpp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_wilinfc_header_cpp PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+add_test(NAME wilinfc_header_cpp COMMAND test_wilinfc_header_cpp)
