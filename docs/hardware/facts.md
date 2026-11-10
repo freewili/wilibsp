@@ -327,7 +327,7 @@ Peripherals still marked TODO in `docs/hardware/catalog.md` remain
 unverified — their driver harvest is future work. Note that the **default
 FreeWili 2 firmware** now implements the full
 subsystem set that this BSP tracks as TODO or out-of-scope: the LoRa
-(WIO-E5) bridge, NFC (ST25R3916B), the ESP32-C5 Bottlenose link, the CM0
+(WIO-E5) bridge, the ESP32-C5 Bottlenose link, the CM0
 Linux module, and the automatic power-zone manager. Where a peripheral is
 implemented upstream, the default firmware is the authoritative reference — see
 `docs/hardware/catalog.md` "Implemented upstream". The ESP32-C5 is the one a
