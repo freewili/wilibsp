@@ -19,7 +19,7 @@
 // Port-1 output base: bit2=SCREEN_NRST, bit5=GPIO25_RP_DIR.
 #define P1_BASE   (0x04 | 0x20)          // = 0x24
 // P1 bit 6 is configured as an input and never driven. On father board rev 2
-// it is GPIO31_DISP, the HDMI CEC wire, which is open drain with a board
+// it is GPIO31_DISP, the CEC wire, which is open drain with a board
 // pull-up; on rev 1 it is I2C_PULL, the header I2C0 pull-up enable. DISPLAY
 // cannot tell the two revisions apart.
 #define P1_CEC_IN 0x40

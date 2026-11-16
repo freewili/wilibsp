@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.13)
-project(wilibsp_tests C)
+project(wilibsp_tests C CXX)
 set(CMAKE_C_STANDARD 11)
+# C++ for the TV output list builder harvested as C++ (bsp/display/rpDVI*),
+# and its tests, which are C++ too.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 enable_testing()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 execute_process(
@@ -210,6 +214,57 @@ target_include_directories(test_dvi_osd PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME dvi_osd COMMAND test_dvi_osd)
 
+# --- bsp/display TV output list builder (C++ pure core + C entry points) ---
+set(BSPDVI ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/display)
+add_executable(test_dvi_frame test_dvi_frame.cpp ${BSPDVI}/tvout_list.cpp
+    ${BSPDVI}/rpDVIFrame.cpp ${BSPDVI}/rpDVIList.cpp ${BSPDVI}/rpDVIPacket.cpp)
+target_include_directories(test_dvi_frame PRIVATE ${BSPDVI} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME dvi_frame COMMAND test_dvi_frame)
+
+# The line ring's row logic (rpDVIMirrorCore.h) on a simulated TV, reader
+# interrupt and drawing core, and its C entry points.
+add_executable(test_dvi_mirror test_dvi_mirror.cpp
+    ${BSPDVI}/rpDVIFrame.cpp ${BSPDVI}/rpDVIPacket.cpp)
+target_include_directories(test_dvi_mirror PRIVATE ${BSPDVI} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME dvi_mirror COMMAND test_dvi_mirror)
+
+add_executable(test_tvout_ring_core test_tvout_ring_core.c ${BSPDVI}/tvout_ring_core.cpp)
+target_include_directories(test_tvout_ring_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME tvout_ring_core COMMAND test_tvout_ring_core)
+
+add_executable(test_tvout_list test_tvout_list.c ${BSPDVI}/tvout_list.cpp
+    ${BSPDVI}/rpDVIFrame.cpp ${BSPDVI}/rpDVIList.cpp ${BSPDVI}/rpDVIPacket.cpp)
+target_include_directories(test_tvout_list PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME tvout_list COMMAND test_tvout_list)
+
+add_executable(test_tvout_plug test_tvout_plug.c ${BSPDVI}/tvout_plug.c)
+target_include_directories(test_tvout_plug PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME tvout_plug COMMAND test_tvout_plug)
+
+# TV sound: audio framing and packet coding checked by an independent decoder,
+# the feeder (rpDVIAudioCore.h) on a simulated TV, and the C entry points.
+add_executable(test_dvi_audio_framing test_dvi_audio_framing.cpp
+    ${BSPDVI}/rpDVIFrame.cpp ${BSPDVI}/rpDVIPacket.cpp)
+target_include_directories(test_dvi_audio_framing PRIVATE ${BSPDVI} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME dvi_audio_framing COMMAND test_dvi_audio_framing)
+
+add_executable(test_dvi_audio test_dvi_audio.cpp
+    ${BSPDVI}/rpDVIFrame.cpp ${BSPDVI}/rpDVIPacket.cpp)
+target_include_directories(test_dvi_audio PRIVATE ${BSPDVI} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME dvi_audio COMMAND test_dvi_audio)
+
+add_executable(test_tvout_audio test_tvout_audio.cpp ${BSPDVI}/tvout_audio_core.cpp ${BSPDVI}/tvout_list.cpp
+    ${BSPDVI}/rpDVIFrame.cpp ${BSPDVI}/rpDVIList.cpp ${BSPDVI}/rpDVIPacket.cpp)
+target_include_directories(test_tvout_audio PRIVATE ${BSPDVI} ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(test_tvout_audio PRIVATE HOST_TEST)
+add_test(NAME tvout_audio COMMAND test_tvout_audio)
+
 # --- apps/retrochat acoustic-modem pure logic (see docs/superpowers in outer repo) ---
 set(RCMODEM ${CMAKE_CURRENT_SOURCE_DIR}/../apps/retrochat/modem)
 add_executable(test_rc_crc16 test_rc_crc16.c ${RCMODEM}/crc16.c)
@@ -353,3 +408,80 @@ target_include_directories(test_rfid_em4100 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
     ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME rfid_em4100 COMMAND test_rfid_em4100)
+
+# --- bsp/cec CEC bit engine and device (C++ pure core + C entry points) ---
+set(BSPCEC ${CMAKE_CURRENT_SOURCE_DIR}/../bsp/cec)
+add_executable(test_cec_core test_cec_main.cpp test_cec_wire.cpp test_cec_controller.cpp
+    test_cec_rx_queue.cpp test_cec_key_hold.cpp ${BSPCEC}/fwCECCore.cpp ${BSPCEC}/fwCECWire.cpp)
+target_include_directories(test_cec_core PRIVATE ${BSPCEC} ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME cec_core COMMAND test_cec_core)
+
+add_executable(test_cec_engine test_cec_engine.c ${BSPCEC}/cec_engine.cpp
+    ${BSPCEC}/fwCECCore.cpp ${BSPCEC}/fwCECWire.cpp)
+target_include_directories(test_cec_engine PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME cec_engine COMMAND test_cec_engine)
+
+add_executable(test_cec_control test_cec_control.c ${BSPCEC}/cec_control.cpp ${BSPCEC}/cec_engine.cpp
+    ${BSPCEC}/fwCECCore.cpp ${BSPCEC}/fwCECWire.cpp)
+target_include_directories(test_cec_control PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME cec_control COMMAND test_cec_control)
+
+add_executable(test_cec_watch test_cec_watch.c ${BSPCEC}/cec_watch.c)
+target_include_directories(test_cec_watch PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME cec_watch COMMAND test_cec_watch)
+
+add_executable(test_cec_place test_cec_place.c ${BSPCEC}/cec_place.c)
+target_include_directories(test_cec_place PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../bsp
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME cec_place COMMAND test_cec_place)
+
+# --- apps/emberward pure game logic: rules, key repeat, score table, sound, TV mixer ---
+set(EMBERWARD ${CMAKE_CURRENT_SOURCE_DIR}/../apps/emberward)
+
+add_executable(test_ew_game
+    test_ew_game.c
+    ${EMBERWARD}/ew_game.c)
+target_include_directories(test_ew_game PRIVATE
+    ${EMBERWARD}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ew_game COMMAND test_ew_game)
+
+add_executable(test_ew_input
+    test_ew_input.c
+    ${EMBERWARD}/ew_input.c)
+target_include_directories(test_ew_input PRIVATE
+    ${EMBERWARD}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ew_input COMMAND test_ew_input)
+
+add_executable(test_ew_scores
+    test_ew_scores.c
+    ${EMBERWARD}/ew_scores.c)
+target_include_directories(test_ew_scores PRIVATE
+    ${EMBERWARD}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ew_scores COMMAND test_ew_scores)
+
+add_executable(test_ew_sfx
+    test_ew_sfx.c
+    ${EMBERWARD}/ew_sfx.c)
+target_include_directories(test_ew_sfx PRIVATE
+    ${EMBERWARD}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ew_sfx COMMAND test_ew_sfx)
+
+add_executable(test_ew_mix
+    test_ew_mix.c
+    ${EMBERWARD}/ew_mix.c
+    ${EMBERWARD}/ew_sfx.c)
+target_include_directories(test_ew_mix PRIVATE
+    ${EMBERWARD}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ew_mix COMMAND test_ew_mix)

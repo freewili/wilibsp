@@ -30,11 +30,11 @@
 #define PIN_PIO_USB_DP 42
 #define PIN_PIO_USB_DM 43
 
-// --- HDMI CEC (TV connector) ---
+// --- CEC (TV connector) ---
 // GPIO31_DISP on father board rev 2: the CEC wire, open drain, pulled up on the
 // board. Also the NFC board's NFC_RFQ line. An input with no pull after
 // board_init(), so the board pull-up is the only one.
-#define PIN_HDMI_CEC   31
+#define PIN_CEC   31
 
 // --- I2C1 (touch, sensors) ---
 #define PIN_I2C1_SDA   26

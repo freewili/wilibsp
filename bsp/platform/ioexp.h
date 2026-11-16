@@ -9,7 +9,7 @@
 //
 // ioexp_init() also releases the LCD reset (SCREEN_NRST), routes the backlight
 // (GPIO25) to the RP2350, sets the SPI1 bus buffer directions, and leaves P1_6
-// an input (the HDMI CEC wire on father board rev 2, the header I2C0 pull-up
+// an input (the CEC wire on father board rev 2, the header I2C0 pull-up
 // enable on rev 1). Call after I2C1 is up and before using the display or radio.
 // It also puts the user-GPIO reference voltage on the external pin — see the
 // VIO section below before driving any header GPIO.

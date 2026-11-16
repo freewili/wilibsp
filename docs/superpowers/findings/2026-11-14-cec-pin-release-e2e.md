@@ -17,7 +17,7 @@ P1_6 high, so every BSP app drove the CEC wire high push-pull.
 - `bsp/platform/board.c`: `board_init()` runs `gpio_init(31)` and
   `gpio_disable_pulls(31)` after the expander, and prints the pin's
   direction, pulls and level.
-- `bsp/platform/board.h`: `PIN_HDMI_CEC` 31.
+- `bsp/platform/board.h`: `PIN_CEC` 31.
 
 ## What rests on what
 

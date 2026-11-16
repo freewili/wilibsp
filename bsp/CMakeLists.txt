@@ -13,6 +13,16 @@ add_library(freewili2_bsp STATIC
     display/font5x7.c
     display/dvi_osd.c
     display/hstx_dvi.c
+    display/tvout.c
+    display/tvout_audio.c
+    display/tvout_audio_core.cpp
+    display/tvout_list.cpp
+    display/tvout_ring.c
+    display/tvout_ring_core.cpp
+    display/tvout_plug.c
+    display/rpDVIFrame.cpp
+    display/rpDVIList.cpp
+    display/rpDVIPacket.cpp
     input/ft6336.c
     input/ft6336_map.c
     leds/led_color.c
@@ -54,6 +64,13 @@ add_library(freewili2_bsp STATIC
     rfid/rfid_demod.c
     rfid/rfid_em4100.c
     rfid/rfid_t5577.c
+    cec/cec.c
+    cec/cec_control.cpp
+    cec/cec_engine.cpp
+    cec/cec_place.c
+    cec/cec_watch.c
+    cec/fwCECCore.cpp
+    cec/fwCECWire.cpp
     gfx/palette.c
     keyboard/fw2kb.c
     keyboard/fw2kb_hidmap.c
@@ -101,6 +118,7 @@ target_link_libraries(freewili2_bsp PUBLIC
     hardware_dma
     hardware_pio
     hardware_clocks
+    hardware_pll
     hardware_vreg
     hardware_psram
     hardware_pwm

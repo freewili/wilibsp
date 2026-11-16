@@ -11,7 +11,8 @@
 // It follows the whole board's temperature, not just the core's (sleeping the
 // core 97% of the time moved it ~1 C), and it has minutes of thermal lag:
 // compare readings at equilibrium, not right after a change. Leaves the temperature input selected: an app that uses the ADC itself must
-// re-select its own input afterwards.
+// re-select its own input afterwards. Returns NAN while clk_adc is stopped
+// (TV output running at a clk_sys with no whole 48 MHz divide; display/tvout.h).
 float board_die_temp_c(void);
 
 #endif

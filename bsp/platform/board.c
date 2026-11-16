@@ -49,12 +49,12 @@ static void board_init_peripherals(bool clear_leds) {
     ioexp_init();
     // The CEC wire: an input with no pull (the pad resets with its pull-down
     // on), leaving the board's pull-up the only one.
-    gpio_init(PIN_HDMI_CEC);
-    gpio_disable_pulls(PIN_HDMI_CEC);
+    gpio_init(PIN_CEC);
+    gpio_disable_pulls(PIN_CEC);
     DIAG("board: cec wire GPIO%d input=%d pull-up=%d pull-down=%d level=%d\n",
-         PIN_HDMI_CEC, gpio_get_dir(PIN_HDMI_CEC) == GPIO_IN,
-         gpio_is_pulled_up(PIN_HDMI_CEC), gpio_is_pulled_down(PIN_HDMI_CEC),
-         gpio_get(PIN_HDMI_CEC));
+         PIN_CEC, gpio_get_dir(PIN_CEC) == GPIO_IN,
+         gpio_is_pulled_up(PIN_CEC), gpio_is_pulled_down(PIN_CEC),
+         gpio_get(PIN_CEC));
     DIAG("board: peripherals ready\n");
 }
 

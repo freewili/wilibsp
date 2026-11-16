@@ -1,9 +1,14 @@
 // bsp/platform/power.c — see power.h.
 #include "platform/power.h"
+#include "display/tvout.h"
 #include "hardware/adc.h"
 #include "pico/stdlib.h"
+#include <math.h>
 
 float board_die_temp_c(void) {
+    // clk_adc is stopped while the TV picture runs on a clk_sys with no whole
+    // 48 MHz divide; a conversion would never complete.
+    if (!tvout_adc_available()) return NAN;
     static bool ready;
     if (!ready) {
         adc_init();
