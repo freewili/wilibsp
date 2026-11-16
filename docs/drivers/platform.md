@@ -5,7 +5,9 @@ driver runs — vreg + clocks (250 MHz, `clk_peri` re-sourced), the CC1101 CS
 parked HIGH, the backlight GPIO initialized off, I2C1 up, and the PCAL6524
 I/O expander configured (LCD reset release, antenna select, SPI1 buffer
 directions). Also provides PSRAM bring-up and the shared-SPI1 arbitration
-primitives. Diagnostics go out over SEGGER RTT (`DIAG()`).
+primitives. Since 2026-11-14 bring-up also leaves the HDMI CEC wire alone:
+expander P1_6 is an input and GPIO31 (`PIN_HDMI_CEC`) an input with no pull
+(see `docs/hardware/facts.md`, "HDMI CEC wire"). Diagnostics go out over SEGGER RTT (`DIAG()`).
 
 **How to use it:** call `board_init()` once at the top of `main()`, before
 any display/touch/LED calls. It's the very first thing every app does:

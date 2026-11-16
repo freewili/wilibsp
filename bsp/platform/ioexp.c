@@ -16,8 +16,13 @@
 #define REG_OUTPUT0 0x04   // output ports 0x04..0x06 (auto-increment)
 #define REG_CONFIG0 0x0C   // direction ports 0x0C..0x0E (1 = input)
 
-// Port-1 output base: bit2=SCREEN_NRST, bit5=GPIO25_RP_DIR, bit6=I2C_PULL.
-#define P1_BASE   (0x04 | 0x20 | 0x40)   // = 0x64
+// Port-1 output base: bit2=SCREEN_NRST, bit5=GPIO25_RP_DIR.
+#define P1_BASE   (0x04 | 0x20)          // = 0x24
+// P1 bit 6 is configured as an input and never driven. On father board rev 2
+// it is GPIO31_DISP, the HDMI CEC wire, which is open drain with a board
+// pull-up; on rev 1 it is I2C_PULL, the header I2C0 pull-up enable. DISPLAY
+// cannot tell the two revisions apart.
+#define P1_CEC_IN 0x40
 // Antenna/radio select. Per the FreeWili2 schematic V1_1 (P1 bit3) and V2_1
 // (P1 bit1) form a 2-bit selector: 0=LoRa, 1=CC1101 433, 2=CC1101 315/415,
 // 3=CC1101 915. Values 1..3 keep the CC1101 on SPI1. V1_1 = value bit0,
@@ -132,12 +137,20 @@ bool ioexp_init(void) {
     s_p2 = P2_EXT_VREF;                                     // IR power OFF, VREF = ext pin
     s_vref = VREF_EXT_PIN;
     uint8_t out[4] = { REG_OUTPUT0, s_p0, s_p1, s_p2 };
-    uint8_t cfg[4] = { REG_CONFIG0, 0x00, 0x00, 0x04 };   // all output except MCLR (P2_2)
+    // All output except P1_6 (CEC wire / I2C_PULL) and MCLR (P2_2).
+    uint8_t cfg[4] = { REG_CONFIG0, 0x00, P1_CEC_IN, 0x04 };
     // Outputs FIRST, then directions (glitch-free: a pin drives its latched value
     // only when its direction flips to output; keeps SCREEN_NRST from pulsing low).
     bool ok = i2c_write_timeout_us(IOEXP_I2C, IOEXP_ADDR, out, 4, false, IOEXP_I2C_TIMEOUT_US) == 4;
     ok = (i2c_write_timeout_us(IOEXP_I2C, IOEXP_ADDR, cfg, 4, false, IOEXP_I2C_TIMEOUT_US) == 4) && ok;
+    // Read-back of the three direction bytes (1 = input).
+    uint8_t reg = REG_CONFIG0;
+    uint8_t dir[3] = { 0, 0, 0 };
+    bool rd = i2c_write_timeout_us(IOEXP_I2C, IOEXP_ADDR, &reg, 1, true, IOEXP_I2C_TIMEOUT_US) == 1 &&
+              i2c_read_timeout_us(IOEXP_I2C, IOEXP_ADDR, dir, 3, false, IOEXP_I2C_TIMEOUT_US) == 3;
     DIAG("ioexp: init %s (LCD reset released; CC1101 + 433 MHz antenna; GPIO VREF = ext pin)\n",
          ok ? "ok" : "NAK");
+    DIAG("ioexp: direction read-back %s P0 0x%x P1 0x%x P2 0x%x (P1_6 CEC wire input: %s)\n",
+         rd ? "ok" : "NAK", dir[0], dir[1], dir[2], (rd && (dir[1] & P1_CEC_IN)) ? "yes" : "no");
     return ok;
 }

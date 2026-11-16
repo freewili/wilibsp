@@ -34,6 +34,7 @@ against `board.h` again once that peripheral gets a driver.
 | `PIN_MIC_SIG2` | 30 | PDM data line 2 | Mic C (clk-high) + Mic D (clk-low) |
 | `PIN_IR_TX` | 20 | IR transmitter LED | PIO carrier-modulated, `pio2` SM1 + 1 DMA channel; gated by `ioexp_ir_pwr()` (PCAL6524 P2_0, off at power-on) |
 | `PIN_IR_RX` | 24 | IR receiver | TSOP-style demodulated envelope: idle HIGH, mark = LOW; `pio2` SM0 + 1 DMA channel (endless ring, polled); same `ioexp_ir_pwr()` gate as TX |
+| `PIN_HDMI_CEC` | 31 | HDMI CEC wire (TV connector) | Added 2026-11-14. Net `GPIO31_DISP` on father board rev 2: open drain, pulled up on the board, shared with the NFC board's `NFC_RFQ`. Also reaches I/O expander P1_6, which the BSP keeps an input. `board_init()` leaves the pin an input with no pull. See facts.md "HDMI CEC wire" |
 
 SPI1 baud rates (shared bus, from `board.h`): LCD 100 MHz
 (`LCD_SPI_BAUD`, divider-limited by `clk_peri`), CC1101 5 MHz
@@ -99,6 +100,7 @@ Driven by the **default** FreeWili 2 firmware's display image (see
   0x23) that selects the CC1101/sub-GHz antenna path (`ANT_LORA`,
   `ANT_CC1101_433`, `ANT_CC1101_315_415`, `ANT_CC1101_915`) and releases the
   LCD's hardware reset — relevant context for the radio and display rows
-  above.
+  above. Its P1_6 is the CEC wire on father board rev 2 and is kept an input
+  (2026-11-14; see the `PIN_HDMI_CEC` row).
 - `bsp/platform/psram.h` documents `PSRAM_BASE 0x11000000` (the memory-mapped
   window, not a GPIO).

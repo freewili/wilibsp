@@ -47,6 +47,14 @@ static void board_init_peripherals(bool clear_leds) {
     board_i2c1_init();
     DIAG("board: ioexp\n");
     ioexp_init();
+    // The CEC wire: an input with no pull (the pad resets with its pull-down
+    // on), leaving the board's pull-up the only one.
+    gpio_init(PIN_HDMI_CEC);
+    gpio_disable_pulls(PIN_HDMI_CEC);
+    DIAG("board: cec wire GPIO%d input=%d pull-up=%d pull-down=%d level=%d\n",
+         PIN_HDMI_CEC, gpio_get_dir(PIN_HDMI_CEC) == GPIO_IN,
+         gpio_is_pulled_up(PIN_HDMI_CEC), gpio_is_pulled_down(PIN_HDMI_CEC),
+         gpio_get(PIN_HDMI_CEC));
     DIAG("board: peripherals ready\n");
 }
 
@@ -98,7 +106,7 @@ void board_init_clk(uint32_t sys_clock_khz) {
     // Backlight as a plain GPIO, matching the working reference (its PWM path is
     // disabled). PWM dimming returns in a later phase — one fewer bring-up variable.
     // I2C1 for touch (FT6336U), the PCAL6524 I/O expander, and sensors.
-    // PCAL6524: release LCD reset, enable I2C pulls, route the backlight to the
+    // PCAL6524: release LCD reset, leave P1_6 (CEC wire) an input, route the backlight to the
     // RP2350, set SPI1 buffer directions, and SELECT the CC1101 + sub-GHz antenna
     // (V1_1/V2_1). The CC1101 is off the shared bus until this runs.
     board_init_peripherals(true);
