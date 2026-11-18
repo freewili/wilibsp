@@ -14,10 +14,15 @@ Flipper-`.ir` parser/writer), and a polled native-USB host MSC stack
 board through `libs/onewili`: the main CPU's OneWili command API over the
 display link, the SD card the main CPU owns, and **peer streams to the
 ESP32-C5 (Bottlenose)**, so a display app and an ESP32 app can run as the two
-halves of one program (see "Two CPUs" below). **Implemented upstream in the
-default FreeWili 2 firmware** (not yet harvested into this BSP): the LoRa
-(WIO-E5) bridge and NFC (ST25R3916B), plus the CM0 Linux module. Still
-`TODO` in this BSP (not yet harvested): NFC, LoRa, and Pico-PIO-USB. See
+halves of one program (see "Two CPUs" below). 125 kHz RFID ships as the
+precompiled `bsp/wilirfid` library (reads the common 125 kHz card formats,
+writes and clones cards, emulates; see
+[`docs/drivers/wilirfid.md`](./docs/drivers/wilirfid.md)), and NFC ships as
+the precompiled `bsp/wilinfc` library (card reading, UID emulation, saved
+cards; see [`docs/drivers/wilinfc.md`](./docs/drivers/wilinfc.md)).
+**Implemented upstream in the default FreeWili 2 firmware** (not yet harvested
+into this BSP): the LoRa (WIO-E5) bridge, plus the CM0 Linux module. Still
+`TODO` in this BSP (not yet harvested): LoRa and Pico-PIO-USB. See
 [`docs/hardware/catalog.md`](./docs/hardware/catalog.md) for the full
 peripheral → driver → provenance table, and `docs/drivers/` for per-driver
 usage docs. Each driver ships with an `apps/hello_*` on-hardware smoke

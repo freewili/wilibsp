@@ -23,7 +23,9 @@ streams" below. It provides:
 
 - `bsp/` — the shared `freewili2_bsp` CMake **STATIC library**: platform
   bring-up, display, touch, and LED drivers, harvested and normalized from the
-  owner's proven repos (primarily `subghz`).
+  owner's proven repos (primarily `subghz`). 125 kHz RFID and 13.56 MHz NFC
+  ship as precompiled libraries, `bsp/wilirfid` and `bsp/wilinfc`; see
+  `docs/drivers/wilirfid.md` and `docs/drivers/wilinfc.md`.
 - `apps/` — individual CMake executables that link `freewili2_bsp`
   (`template` — starter scaffold; `hello_display` — v1 on-hardware smoke
   test: display renders, touch responds, LEDs light).
@@ -51,7 +53,7 @@ radio, I2C sensors, DVI, and the agentio harness. The per-increment records
 live in `docs/superpowers/findings/`, summarized in
 `docs/hardware/facts.md` ("Hardware verification status") and tracked per
 peripheral in `docs/hardware/catalog.md`. Anything still marked TODO in the
-catalog (NFC, PIO-USB) is unverified because its driver has not been
+catalog (PIO-USB) is unverified because its driver has not been
 harvested yet.
 
 **Do not assume a doc's description of behavior is a confirmed result.** Where
@@ -656,7 +658,7 @@ counters over RTT instead while a link is busy.
   `apps/dualcpu`, and the two dualcpu findings files.
 - **Related default-firmware subsystems** (implemented upstream in the default
   FreeWili 2 firmware, not in this BSP): LoRa WIO-E5 bridge
-  (`docs/drivers/lora.md`), NFC ST25R3916B, the MAIN-side ESP32-C5 link and
+  (`docs/drivers/lora.md`), the MAIN-side ESP32-C5 link and
   its `w\a` flasher, CM0 Linux bridge, and the automatic power-zone manager
   (`docs/drivers/power.md`).
   That covers the SD card too — the display CPU has no direct card path, so

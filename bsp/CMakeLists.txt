@@ -94,7 +94,25 @@ target_include_directories(freewili2_bsp BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/segger_rtt
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fatfs)
 
+# Precompiled 125 kHz RFID library. Header + archive only.
+# An app that never calls a WILiRFID_ function links nothing from the archive.
+add_library(WILiRFID STATIC IMPORTED GLOBAL)
+set_target_properties(WILiRFID PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/wilirfid/libWILiRFID.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/wilirfid"
+    INTERFACE_LINK_LIBRARIES "pico_stdlib;hardware_adc;hardware_pwm;hardware_pio;hardware_dma")
+
+# Precompiled 13.56 MHz NFC library. Header + archive only.
+# An app that never calls a WILiNFC_ function links nothing from the archive.
+add_library(WILiNFC STATIC IMPORTED GLOBAL)
+set_target_properties(WILiNFC PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/wilinfc/libWILiNFC.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/wilinfc"
+    INTERFACE_LINK_LIBRARIES "pico_stdlib;hardware_i2c")
+
 target_link_libraries(freewili2_bsp PUBLIC
+    WILiRFID
+    WILiNFC
     pico_stdlib
     hardware_i2c
     hardware_spi

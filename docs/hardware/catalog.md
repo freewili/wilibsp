@@ -23,24 +23,26 @@ procedure once you've picked a row.
 | Magnetometer — BMM350 | `bsp/sensors/{bmm350,bmm350_comp}.{c,h}` | I2C1 addr 0x14, chip-id 0x33; full OTP download + Bosch compensation → µT (+ sqrtf magnitude); reads carry 2 leading dummy bytes. Init ≈ 130 ms of settles. Harvested verbatim from `sensorview`. Demo: `apps/hello_sensors`. |
 | IR TX/RX | `bsp/ir/{ir_capture,ir_tx,ir_decode,ir_encode,ir_protocols,ir_frame,ir_tx_pack,ir_file,db_sort,ir_resolve}.{c,h}`, `bsp/ir/{ir_capture,ir_tx}.pio` | TX=GPIO20 (`PIN_IR_TX`, pio2 SM1 + 1 DMA), RX=GPIO24 (`PIN_IR_RX`, pio2 SM0 + 1 DMA), both polled/no-IRQ. Gated by `ioexp_ir_pwr()` (PCAL6524 P2_0, off at power-on). Harvested from `WiliIR` (which also vendored `usbmsc` for USB and proved the whole stack on hardware 2026-07-05/06). Demo: `apps/hello_ir`. (pio2 shared with radio GDO capture; radio-first init order) |
 | 125 kHz RFID (EM4100 read / T5577 write) | `bsp/rfid/{rfid,rfid_carrier,rfid_capture,rfid_demod,rfid_em4100,rfid_t5577}.{c,h}`, `bsp/rfid/rfid_carrier_period.pio` | 125 kHz LF RFID reader and T5577 tag writer. Demo: `apps/hello_rfid`. |
+| 125 kHz RFID library (common 125 kHz card formats; write, clone, emulate) | `bsp/wilirfid/{WILiRFID.h, libWILiRFID.a}` | Precompiled library with a C header. Owns GPIO 34/35/36/44/46, one PIO block, three DMA channels (claimed dynamically), the ADC and PWM slice 9; polled, no IRQ. Power zone `NFC_RFID`, shared with `bsp/wilinfc`; do not run alongside `bsp/rfid`. Demo: `apps/hello_wilirfid`. See `docs/drivers/wilirfid.md`. |
+| 13.56 MHz NFC library (card reading, UID emulation, saved cards) | `bsp/wilinfc/{WILiNFC.h, libWILiNFC.a}` | Precompiled library with a C header. Uses I2C1 (shared, not reconfigured); polled, no IRQ. Power zone `NFC_RFID`, shared with `bsp/wilirfid` and `bsp/rfid`; may run alongside either. Demo: `apps/hello_wilinfc`. See `docs/drivers/wilinfc.md`. |
 | PIO-USB HID input (keyboard, mouse, HID gamepad, XInput) | `bsp/pio_usb_host/*` + `bsp/third_party/Pico-PIO-USB/*` | GPIO42/43, TinyUSB host over PIO, zone 8 + `ioexp_usb_pwr()`; public C wrapper. Builds offline; hardware unverified. |
 | USB host MSC (thumb drive) | `bsp/usbhost/{usb_core,usb_hcd,usb_hub,usb_msc,usb_parse,msc_disk,usb_store}.{c,h}` + `bsp/third_party/fatfs/*` | Native RP2350 USB controller in host mode (mutually exclusive with TinyUSB device mode), CH334F hub, single hub tier only, polled/no-IRQ. Gated by `ioexp_usb_pwr()` (PCAL6524 P0_0 = HP1 + P1_4 = HP2, off at power-on). Harvested from `WiliIR`, origin the owner's `usbmsc` driver (vendored verbatim into WiliIR, then carried here unmodified). Demo: `apps/hello_usbdrive`. |
 | Agent E2E harness — remote input injection + screen capture | `bsp/agentio/{agentio,agentio_rle,agentio_shadow}.{c,h}`, `bsp/agentio/agentio_proto.h` | Not a peripheral: a test harness. RTT channel 1 (commands down, PackBits-16 pixels up); shadow framebuffer mirrors ST7796 writes because the panel cannot be read back; injection lives in `uartkbd_parse` and `ft6336_poll`. Build switch `FW2_AGENTIO` (default ON). Host verbs: `fw screenshot` / `press` / `hold` / `release` / `touch` / `type`. Demo: `apps/hello_agentio`. Verified on hardware 2026-07-26 (capture + button/touch/type injection); the DVI capture surface remains unexercised. See docs/superpowers/findings/2026-07-26-agentio-e2e.md. |
 
-These sixteen are exactly what `bsp/CMakeLists.txt` compiles into
+These eighteen are exactly what `bsp/CMakeLists.txt` compiles into
 `freewili2_bsp` today (plus `third_party/segger_rtt` and `third_party/fatfs`)
 and exactly what `bsp/fw2.h` includes. (`agentio/*.c`, `platform/*.c`,
 `display/*.c`, `input/*.c`, `leds/*.c`, `audio/*.c`, `radio/*.c`, `pdm/*.c`,
 `dsp/*.c`, `sensors/*.c`, `ir/*.c`, `rfid/*.c`, `keyboard/*.c`, `usbhost/*.c`,
 plus `ws2812.pio.h`, `i2s_duplex.pio.h`, `gdo_capture.pio.h`,
 `pdm_capture.pio.h`, `ir_capture.pio.h`, `ir_tx.pio.h`, and
-`rfid_carrier_period.pio.h` generation)
+`rfid_carrier_period.pio.h` generation; the precompiled `wilirfid/libWILiRFID.a`
+and `wilinfc/libWILiNFC.a` archives are linked as imported libraries)
 
 ## TODO (future add-driver increments)
 
 | Peripheral | GPIOs / bus (source: `FwDisplayVibe.md` unless noted) | Harvest from |
 |---|---|---|
-| NFC — ST25R3916B | I2C1 (SDA=26/SCL=27; address in the firmware's NFC driver) | **Implemented upstream** in the default firmware's display core (FwGUI RPC 0x6F–0x71, events 52 `nfcSnapshot` / 53 `nfcText`). See "Implemented upstream" below |
 | DVI / HSTX | DVI_CLK_N/P=12/13, DVI_D0_N/P=14/15, DVI_D1_N/P=16/17, DVI_D2_N/P=18/19 | **DONE** — plain 640x480p60 DVI (`bsp/display/hstx_dvi`) harvested from ../movieplayer; HDMI-audio-island mode not harvested. See docs/drivers/dvi.md |
 | 14-button serial coprocessor | TX=GPIO38, RX=GPIO39 (UART1 @ 62500 8N1, RX-only) | **DONE** — `bsp/input/uartkbd*` frame parser + `bsp/keyboard/fw2kb*` chord engine (harvested from `../wilikeyboard`). See docs/drivers/keyboard.md |
 
@@ -55,12 +57,11 @@ firmware or planning a harvest:
 | Peripheral | Where it lives upstream | Reference |
 |---|---|---|
 | LoRa — WIO-E5 bridge | DISPLAY core: LoRa bridge + FwGUI RPC 0x66–0x6A; bridge fw in a companion WIO repo; pairs with a Meshtastic display-firmware fork | this repo `docs/drivers/lora.md`; the default firmware's LoRa documentation |
-| NFC — ST25R3916B | DISPLAY core: NFC driver, FwGUI RPC 0x6F–0x71, events 52 `nfcSnapshot` / 53 `nfcText`, MIFARE Crypto1 on-device | the default firmware's NFC documentation |
 | Wi-Fi/BLE — ESP32-C5 (Bottlenose) | MAIN core: the ESP32 bridge over the PIO-UART (runtime UART TX 32/34, RX 33/35); no public standalone ESP32 repo — firmware ships as a release asset. **Reachable from a display app** through OneWili peer streams (`libs/onewili`, `ow_stream_*`) when the ESP32 runs a BSP app; verified 2026-09-28 with `apps/dualcpu` | the default firmware's PIO-allocation notes (zone 5); `AGENTS.md` "The ESP32-C5 and peer streams"; `docs/superpowers/findings/2026-09-28-dualcpu-renumbered-ids-rerun.md` |
 | CM0 Linux module (BCM2837) | MAIN/FPGA-side: bridge daemon + OneWili C/Python bindings | the default firmware's CM0-bridge documentation |
 | Automatic power-zone manager | DISPLAY core: zone-manager family; host-tested | this repo `docs/drivers/power.md` |
 
-Harvesting the LoRa bridge or NFC driver into this BSP would follow the
+Harvesting the LoRa bridge into this BSP would follow the
 normal "add a driver" procedure with the default firmware as the source repo.
 The `libs/onewili` submodule pin is bumped alongside this patch to a commit
 containing the regenerated OneWili package (SD-card API + new

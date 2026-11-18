@@ -35,6 +35,12 @@ against `board.h` again once that peripheral gets a driver.
 | `PIN_IR_TX` | 20 | IR transmitter LED | PIO carrier-modulated, `pio2` SM1 + 1 DMA channel; gated by `ioexp_ir_pwr()` (PCAL6524 P2_0, off at power-on) |
 | `PIN_IR_RX` | 24 | IR receiver | TSOP-style demodulated envelope: idle HIGH, mark = LOW; `pio2` SM0 + 1 DMA channel (endless ring, polled); same `ioexp_ir_pwr()` gate as TX |
 
+The 125 kHz RFID front end (the `PIN_RFID_*` defines in `board.h`) is driven
+by one of two drivers at a time: the open `rfid_*` driver (`bsp/rfid/`, see
+docs/drivers/rfid.md) or the WILiRFID library (`bsp/wilirfid/`, see
+docs/drivers/wilirfid.md). Either may run alongside the WILiNFC library
+(I2C1, below).
+
 SPI1 baud rates (shared bus, from `board.h`): LCD 100 MHz
 (`LCD_SPI_BAUD`, divider-limited by `clk_peri`), CC1101 5 MHz
 (`CC1101_SPI_BAUD`, CC1101 SPI ceiling ~6.5 MHz).
@@ -71,7 +77,7 @@ GPIOs of their own, per `FwDisplayVibe.md`:
 
 | Peripheral | I2C address | Driver status |
 |---|---|---|
-| ST25R3916B NFC | I2C1 (address in the firmware's `nfc/hardware/st25r3916.h`) | **Implemented upstream** (default firmware, FwGUI RPC 0x6F–0x71) |
+| NFC reader | I2C1 | DONE (WILiNFC library, `bsp/wilinfc/`) |
 | OPT4001 ambient light | 0x45 (ADDR strapped high) | DONE (`bsp/sensors/opt4001.c`) |
 | SHT40-AD1B-R3 humidity | 0x44 | DONE (`bsp/sensors/sht40.c`) |
 | BMI323 IMU | 0x68 | DONE (`bsp/sensors/bmi323.c`) |
