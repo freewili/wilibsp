@@ -129,6 +129,37 @@ starts with that directory empty, and the configure then fails with
 "does not contain a CMakeLists.txt file". Run
 `git submodule update --init libs/onewili` once per checkout.
 
+**The OneWili link costs about 116 KB of SRAM, all static.** Measured from
+the linker maps of `hello_sdcard` and `toggleled`:
+
+| Part | Bytes | What it is |
+| --- | --- | --- |
+| `ow_device` (the app's) | 37,168 | 4 KB response line + 8 text-event lines of 4 KB + the peer-stream stash |
+| UART receive ring | 32,768 | 40 ms of the 8 Mbaud link, filled by the UART interrupt |
+| Binary-stream FIFO | 32,768 | about 340 CAN reports |
+| Text-stream FIFO | 8,192 | about 35 CAN text events |
+| Peer-stream FIFO | 2,048 | `ow_stream_*` datagrams |
+| SD-card frame slots | 1,904 | eight `ow_sd_*` receive frames |
+| Other | 1,018 | parser state, counters, the SD client |
+| **Total** | **115,866** | |
+
+An app that also calls the pipelined `onewili_fast.h` API adds a 6,144-byte
+response stash (`dualcpu`: 122,022 in all). Every app pays the same whether
+it streams CAN frames or reads one small file. For scale: an app with one
+480x320 TV/LCD buffer (the v003 bench build of `hello_tvout`) used 376,100 bytes of the 512 KB of SRAM before
+its 8 KB of stacks and heap, so adding the link leaves about 24 KB for the
+rest of an app; a larger app needs a smaller
+picture (one 320x240 buffer shown at 2x with `tvout_start_2x()` fills the TV)
+or a PSRAM picture (`docs/drivers/tvout.md`). The only size the BSP
+lets a tree change is the text-event queue, the CMake cache variable
+`FW2_ONEWILI_TEXT_EVENTS`: default 8 lines of 4 KB; 1 saves 28 KB of every
+`ow_device`. Change its default in the top-level `CMakeLists.txt`, or run
+`cmake -B build -DFW2_ONEWILI_TEXT_EVENTS=1` once on a configured tree. It is
+part of `ow_device`'s layout, so it applies to the library and every app of
+the tree alike; an app that reads text events with `ow_poll_text_line()`
+loses the oldest when more arrive than the queue holds
+(`dropped_text_events`). The other buffers are fixed in the OneWili sources.
+
 **You do not need to export `PICO_SDK_PATH`.** The SDK and toolchain versions
 are pinned in `tools/fw.py` (`PICO_SDK_VERSION = "2.3.0"`,
 `PICO_TOOLCHAIN_VERSION = "14_2_Rel1"`) and passed to CMake explicitly, each
@@ -166,18 +197,16 @@ BSP was harvested from. They are also recorded in `docs/hardware/facts.md`.
    the linker's PSRAM region starts at that same address, so a raw pointer
    aliases whatever the linker placed there. Note `arm-none-eabi-size` folds
    PSRAM into `bss`; use `size -A` to read the real SRAM figure.
-   **Caveat for RAM apps (`no_flash`):** `__uninitialized_psram` emits a
-   `.psram_noload` section, and ld gives it a load address by continuing from
-   the previous section's — which in a `no_flash` build is SRAM, because the
-   SDK aliases `PSRAM_STORE` to `RAM`. The resulting phantom load range runs
-   off the end of SRAM and **picotool refuses to emit the UF2**
-   (`Memory segment ... is outside of valid address range`), even though the
-   segment carries zero file bytes. A flash build hides this by putting the
-   phantom range in flash. Until picotool stops range-checking zero-length
-   segments, a `no_flash` app cannot use `__uninitialized_psram` at all; either
-   reserve a fixed window (see `bsp/agentio/agentio.c`, which does this with a
-   bounds check against `__psram_end__`) or strip `.psram_noload` from the ELF
-   before the UF2 step.
+   **RAM apps (`no_flash`) can use `__uninitialized_psram`.** The SDK's
+   `no_flash` linker script aliases `PSRAM_STORE` to `RAM`, which would give
+   the `.psram_noload` section a phantom SRAM load range and make the UF2 step
+   fail. `fw2_display_app()` overrides that alias to `PSRAM` and writes the
+   UF2 from the ELF's loadable bytes itself, so a static
+   `__uninitialized_psram("group")` buffer takes no SRAM and no UF2 bytes and
+   `tools/check_app_uf2.py` passes. Its contents start undefined; initialized
+   data in PSRAM is still not allowed (an app UF2 must not mix SRAM and PSRAM
+   blocks). The About page's LCD backup (`bsp/input/app_about.c`) is built
+   this way.
    250 MHz is the DEFAULT (audio-optimal: NAU88C10 MCLK = clk_sys/61 = 4.0984 MHz
    ~ 16 kHz fs). An app may bring the board up at another even-MHz clock via
    board_init_clk(khz) — the DVI demo uses 252 MHz for an exact 25.2 MHz pixel
@@ -647,7 +676,7 @@ counters over RTT instead while a link is busy.
 - **Hardware facts / invariants**: `docs/hardware/facts.md`.
 - **Peripheral status (done vs. TODO)**: `docs/hardware/catalog.md`.
 - **Per-driver usage docs**: `docs/drivers/*.md` (platform, display, touch,
-  leds, audio, pdm, radio, sensors, ir, usbhost, dvi, agentio).
+  leds, audio, pdm, radio, sensors, ir, usbhost, dvi, tvout, cec, agentio).
 - **On-hardware verification records**: `docs/superpowers/findings/*-e2e.md` —
   what was actually run on the board and what came back. Check here before
   claiming any behavior is confirmed.

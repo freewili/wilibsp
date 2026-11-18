@@ -116,6 +116,10 @@ saves, logs, generated maps, caches, and similar files. Create `/appdata/` and
 the app-specific directory before the first write. Do not put app-owned files
 at the SD root or directly in `/appdata/`.
 
+`/appdata/wilibsp/` holds the settings every BSP app shares, written through
+the BSP: `cec_address.txt`, the TV input (`docs/drivers/cec.md`, Physical
+address).
+
 User-selected exports and deliberately shared or interoperable files may live
 elsewhere. When an app uses such a path, make that intent clear in its UI or
 documentation. Do not hide user-authored files inside `/appdata/` merely to

@@ -375,7 +375,9 @@ for (;;) { fw2_app_recovery_task(); picpwr_task(); ... }
 
 The CPU is not where the heat goes: on the bench, sleeping the 250 MHz core
 97% of the time lowered the die by ~1 C. `board_die_temp_c()`
-(`bsp/platform/power.h`) reads the die sensor for before/after comparisons;
+(`bsp/platform/power.h`) reads the die sensor for before/after comparisons
+(it returns `NAN` while TV output has `clk_adc` stopped, since 2026-11-14;
+see `docs/drivers/tvout.md`);
 canblast's `TEMP`, `KEEP z`, `DROP z` and `CODEC` RTT commands are the
 bench for this.
 

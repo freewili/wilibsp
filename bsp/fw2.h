@@ -11,6 +11,8 @@
 #include "display/st7796.h" // (Task 4)
 #include "display/hstx_dvi.h"   // (harvested: 640x480p60 DVI over HSTX, GPIO 12-19)
 #include "display/dvi_osd.h"    // (harvested: software OSD for the DVI video region)
+#include "display/tvout.h"      // (harvested: TV output, 640x480p60 on the USB PLL, GPIO 12-19)
+#include "display/tvout_audio.h" // (harvested: TV sound, 48 kHz stereo in audio framing)
 #include "input/ft6336.h"   // (Task 5)
 #include "input/uartkbd.h"  // coprocessor link: buttons in, commands out
 #include "input/app_recovery.h" // hold HOME for five seconds to leave a RAM app
@@ -44,6 +46,7 @@
 #include "rfid/rfid_em4100.h"
 #include "rfid/rfid_t5577.h"
 
+#include "cec/cec.h"          // (harvested: CEC playback device on GPIO31, TV connector)
 #include "wilirfid/WILiRFID.h"   // precompiled 125 kHz RFID library (libWILiRFID.a)
 #include "wilinfc/WILiNFC.h"     // precompiled 13.56 MHz NFC library (libWILiNFC.a)
 

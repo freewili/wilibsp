@@ -2,6 +2,9 @@
 
 Read EM4100 tags and write T5577 tags over the 125 kHz RFID front end.
 
+`rfid_reader_start()` returns false while TV output runs (2026-11-14; see
+`docs/drivers/tvout.md`, "Refusals").
+
 ## Quick start — read a tag
 
 ```c

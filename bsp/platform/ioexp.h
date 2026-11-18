@@ -7,9 +7,10 @@
 // SPI1 with the LCD; its MISO is GPIO8 (muxed with LCD DC by the spi_bus arbiter)
 // and its chip-select is GPIO40.
 //
-// ioexp_init() also releases the LCD reset (SCREEN_NRST), enables the I2C bus
-// pulls, routes the backlight (GPIO25) to the RP2350, and sets the SPI1 bus
-// buffer directions. Call after I2C1 is up and before using the display or radio.
+// ioexp_init() also releases the LCD reset (SCREEN_NRST), routes the backlight
+// (GPIO25) to the RP2350, sets the SPI1 bus buffer directions, and leaves P1_6
+// an input (the CEC wire on father board rev 2, the header I2C0 pull-up
+// enable on rev 1). Call after I2C1 is up and before using the display or radio.
 // It also puts the user-GPIO reference voltage on the external pin — see the
 // VIO section below before driving any header GPIO.
 #ifndef IOEXP_H

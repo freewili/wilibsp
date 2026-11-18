@@ -23,6 +23,7 @@ typedef struct {
     uint8_t  id[RFID_TAG_ID_MAX];
 } rfid_tag_t;
 
+// False while the TV picture runs (display/tvout.h); the state stays idle.
 bool     rfid_reader_start(void);
 void     rfid_reader_stop(void);
 void     rfid_reader_service(void);

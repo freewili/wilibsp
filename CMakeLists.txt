@@ -21,6 +21,16 @@ add_subdirectory(bsp)
 # Reusable non-BSP libraries.
 add_subdirectory(libs/onewili/wilibsp)   # the submodule ships every OneWili language package; wilibsp/ is the display-CPU C one
 
+# Text-event lines ow_device queues (OW_TEXT_EVENT_QUEUE, onewili.h), 4 KB of
+# every ow_device each. A line arriving with the queue full drops the oldest,
+# counted in dropped_text_events. Part of ow_device's layout, so the library
+# and every app in this tree take the same value.
+set(FW2_ONEWILI_TEXT_EVENTS 8 CACHE STRING "Text-event lines each OneWili ow_device queues (1 or more, 4 KB each)")
+if(NOT FW2_ONEWILI_TEXT_EVENTS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "FW2_ONEWILI_TEXT_EVENTS must be a whole number of at least 1, not '${FW2_ONEWILI_TEXT_EVENTS}'")
+endif()
+target_compile_definitions(onewili_fwgui PUBLIC OW_TEXT_EVENT_QUEUE=${FW2_ONEWILI_TEXT_EVENTS})
+
 # Each app opts in; add new apps here.
 add_subdirectory(apps/hello_audio)
 add_subdirectory(apps/hello_cc1101)
@@ -31,6 +41,7 @@ add_subdirectory(apps/hello_sdcard)
 add_subdirectory(apps/hello_sensors)
 add_subdirectory(apps/hello_usbdrive)
 add_subdirectory(apps/hello_dvi)
+add_subdirectory(apps/hello_tvout)
 add_subdirectory(apps/toggleled)
 add_subdirectory(apps/retrochat)
 add_subdirectory(apps/hello_keyboard)
@@ -41,5 +52,7 @@ add_subdirectory(apps/hello_psram_exec)
 add_subdirectory(apps/canblast)
 add_subdirectory(apps/dualcpu)
 add_subdirectory(apps/hello_rfid)
+add_subdirectory(apps/hello_cec)
+add_subdirectory(apps/emberward)
 add_subdirectory(apps/hello_wilirfid)
 add_subdirectory(apps/hello_wilinfc)

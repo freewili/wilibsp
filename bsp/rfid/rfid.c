@@ -3,6 +3,7 @@
 #include "rfid/rfid_carrier.h"
 #include "rfid/rfid_capture.h"
 #include "rfid/rfid_demod.h"
+#include "display/tvout.h"
 #include <string.h>
 
 static rfid_state_t s_state = RFID_STATE_IDLE;
@@ -12,6 +13,10 @@ static uint32_t     s_read_pos;
 
 bool rfid_reader_start(void) {
     if (s_state != RFID_STATE_IDLE) return s_state != RFID_STATE_FAULTED;
+    // Refused while the TV picture runs: the reader's capture and the HSTX
+    // feed together run the HSTX FIFO short, and on a clk_sys with no whole
+    // 48 MHz divide the ADC has no clock.
+    if (tvout_running()) return false;
 
     rfid_demod_reset();
     rfid_carrier_start();

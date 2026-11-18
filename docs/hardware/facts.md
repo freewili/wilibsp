@@ -158,6 +158,33 @@ than assuming success. `ioexp_init()`-style bring-up should check the write
 result and retry/recover, because a silently-missed direction write leaves
 pins in the wrong direction.
 
+## CEC wire: GPIO31 and expander P1_6 stay inputs (2026-11-14)
+
+On father board rev 2 the TV connector's CEC wire is net `GPIO31_DISP`: it
+reaches DISPLAY GPIO31 and the DISPLAY I/O expander's P1_6, is pulled up on
+the board, and is shared with the NFC board's `NFC_RFQ`. CEC is open drain:
+every device on the wire may pull it low, and nothing may drive it high.
+
+- Until 2026-11-14, `ioexp_init()` configured all of port 1 as outputs and
+  wrote P1_6 high (the old port-1 base value 0x64), so on rev 2 every BSP app
+  drove the CEC wire high push-pull. This rests on the schematic and on the
+  stock firmware's behaviour; it was not seen on the wire with a BSP app.
+- Since 2026-11-14, `ioexp_init()` writes port 1 direction byte 0x40 (P1_6
+  an input) and never drives P1_6, and `board_init()` makes GPIO31 an input
+  with both pulls off (the pad comes out of reset with its pull-down on). The
+  stock DISPLAY firmware does the same two things.
+- On father board rev 1, P1_6 is `I2C_PULL`, the enable of the header I2C0
+  pull-ups. DISPLAY cannot tell rev 1 from rev 2, so the BSP follows the stock
+  firmware: P1_6 is never driven on either revision, and on rev 1 the header
+  I2C0 pull-up enable is not driven while a BSP app runs.
+- Bring-up prints the expander's direction read-back
+  (`ioexp: direction read-back ok P0 0x0 P1 0x40 P2 0x4 ...`) and the GPIO31
+  state (`board: cec wire GPIO31 input=1 pull-up=0 pull-down=0 ...`) over RTT.
+- Hardware status: the release itself was not measured on the wire, but the
+  CEC playback device passed on a board with it in place
+  (`docs/superpowers/findings/2026-11-14-cec-e2e.md`). See
+  `docs/superpowers/findings/2026-11-14-cec-pin-release-e2e.md`.
+
 ## No LCD reset GPIO
 
 The ST7796-class panel has no dedicated reset GPIO in this design. The
@@ -322,6 +349,28 @@ ST7796 flush), and — after the MCLK/LRCK-lock fix (see "Audio: lock LRCK to MC
 above) — the 1 kHz tone plays clean on both the onboard speaker and the 3.5 mm jack
 (±9.2 Hz slip sidebands −17 dB → −44 dB). Full record:
 `docs/superpowers/findings/2026-07-04-i2s-audio-e2e.md`.
+
+CEC (`bsp/cec`, 2026-11-14): the playback device (address claim, remote
+keys, standby received, wake and input switch sent) passed on a board with a
+TV: `docs/superpowers/findings/2026-11-14-cec-e2e.md`. The requests to other
+devices, the frame capture, the second device type and the vendor ID setting
+and the key-repeat, vendor-frame and routing events are built and
+host-tested but **not yet run on a board**: the bench recipe is in
+`docs/superpowers/findings/2026-11-14-cec-full-e2e.md`.
+
+TV output (`bsp/display/tvout`, 2026-11-14): the colour bars and clocks at
+250 MHz with 50 stop/start cycles, the SRAM picture with page flip and plug
+detection, a PSRAM-executing app, and the PSRAM picture through the line ring
+passed on a board
+(`docs/superpowers/findings/2026-11-14-tvout-test-picture-e2e.md`,
+`docs/superpowers/findings/2026-11-14-tvout-app-picture-e2e.md`,
+`docs/superpowers/findings/2026-11-14-tvout-psram-picture-e2e.md`). The 2x
+picture, `tvout_start_psram()` as its own entry point, the PSRAM picture's
+LCD mirror and sound over audio framing are built and host-tested but **not
+yet run on a board**
+(`docs/superpowers/findings/2026-11-14-tvout-sound-e2e.md`,
+`docs/superpowers/findings/2026-11-14-tvout-cec-app-gaps.md`). Neither is
+`apps/emberward`, the example game that uses both.
 
 Peripherals still marked TODO in `docs/hardware/catalog.md` remain
 unverified — their driver harvest is future work. Note that the **default

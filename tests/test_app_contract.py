@@ -185,6 +185,7 @@ def test_every_app_registers_an_about_surface():
             continue
         source = main.read_text(encoding="utf-8")
         if ("fw2_app_about_use_lcd()" not in source and
+                "fw2_app_about_use_lcd_restore(" not in source and
                 "fw2_app_about_set_renderer(" not in source):
             offenders.append(app.name)
     assert not offenders, "apps missing PAGE-hold About screen: " + ", ".join(offenders)
