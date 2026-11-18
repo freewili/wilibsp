@@ -133,7 +133,7 @@ zone 1 is bit 0 of the **last** byte and zone 17 is bit 0 of the first.
 | 10 | Addressable RGB LEDs | no | — |
 | 11 | Analog subsystem (DAC, ADC, op-amps) | no | — |
 | 12 | No confirmed load | no | Leave in its default state; exposed as a **manual setting** in the default firmware — never inferred or auto-released. Verified not required for the LCD (apps draw with it off) or the video output (signal, sink detection and hotplug all unaffected with it off) |
-| 13 | NFC + low-frequency RFID | no | Driven by the default firmware's FwGUI NFC RPC (0x6F–0x71) — see the "Implemented upstream" notes in docs/hardware/catalog.md |
+| 13 | NFC + low-frequency RFID | no | Powers both front ends. A display app that uses the WILiNFC library (docs/drivers/wilinfc.md), the WILiRFID library (docs/drivers/wilirfid.md) or the open `rfid_*` driver (docs/drivers/rfid.md) lists `NFC_RFID` in `POWER_ZONES`; one app may use the NFC library with either RFID driver. The default firmware drives it for its own NFC support (FwGUI NFC RPC 0x6F–0x71) |
 | 14 | USB-serial bridge | with USB cable | Managed automatically on cable attach/detach |
 | 15 | CAN controller + transceiver | no | — |
 | 16 | On-board debug probe | with USB cable | Off mid-session = you lose your debugger. Managed automatically on cable attach/detach |
